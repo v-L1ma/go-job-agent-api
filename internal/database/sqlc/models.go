@@ -4,8 +4,92 @@
 
 package sqlc
 
-type Author struct {
-	ID   int32  `db:"id" json:"id"`
-	Name string `db:"name" json:"name"`
-	Cpf  string `db:"cpf" json:"cpf"`
+import (
+	"github.com/jackc/pgx/v5/pgtype"
+)
+
+type Generatedcv struct {
+	ID             pgtype.UUID        `db:"id" json:"id"`
+	Userid         pgtype.UUID        `db:"userid" json:"userid"`
+	Urlfile        string             `db:"urlfile" json:"urlfile"`
+	Active         bool               `db:"active" json:"active"`
+	Createdby      string             `db:"createdby" json:"createdby"`
+	Createdat      pgtype.Timestamptz `db:"createdat" json:"createdat"`
+	Lastmodifiedby string             `db:"lastmodifiedby" json:"lastmodifiedby"`
+	Lastmodifiedat pgtype.Timestamptz `db:"lastmodifiedat" json:"lastmodifiedat"`
+}
+
+type Job struct {
+	ID             pgtype.UUID        `db:"id" json:"id"`
+	Plataformjobid string             `db:"plataformjobid" json:"plataformjobid"`
+	Title          string             `db:"title" json:"title"`
+	Description    string             `db:"description" json:"description"`
+	Url            string             `db:"url" json:"url"`
+	Isapplied      bool               `db:"isapplied" json:"isapplied"`
+	Status         string             `db:"status" json:"status"`
+	Active         bool               `db:"active" json:"active"`
+	Createdby      string             `db:"createdby" json:"createdby"`
+	Createdat      pgtype.Timestamptz `db:"createdat" json:"createdat"`
+	Lastmodifiedby string             `db:"lastmodifiedby" json:"lastmodifiedby"`
+	Lastmodifiedat pgtype.Timestamptz `db:"lastmodifiedat" json:"lastmodifiedat"`
+	Platform       string             `db:"platform" json:"platform"`
+	Company        string             `db:"company" json:"company"`
+}
+
+type Searchquery struct {
+	ID             pgtype.UUID        `db:"id" json:"id"`
+	Query          string             `db:"query" json:"query"`
+	Keywords       []string           `db:"keywords" json:"keywords"`
+	Area           string             `db:"area" json:"area"`
+	Normalizedhash string             `db:"normalizedhash" json:"normalizedhash"`
+	Active         bool               `db:"active" json:"active"`
+	Createdby      string             `db:"createdby" json:"createdby"`
+	Createdat      pgtype.Timestamptz `db:"createdat" json:"createdat"`
+	Lastmodifiedby string             `db:"lastmodifiedby" json:"lastmodifiedby"`
+	Lastmodifiedat pgtype.Timestamptz `db:"lastmodifiedat" json:"lastmodifiedat"`
+	Lastexecutedat pgtype.Timestamptz `db:"lastexecutedat" json:"lastexecutedat"`
+	Levels         []string           `db:"levels" json:"levels"`
+}
+
+type User struct {
+	ID                  pgtype.UUID `db:"id" json:"id"`
+	Name                string      `db:"name" json:"name"`
+	Cpf                 string      `db:"cpf" json:"cpf"`
+	Email               pgtype.Text `db:"email" json:"email"`
+	Passwordhash        pgtype.Text `db:"passwordhash" json:"passwordhash"`
+	Accessfailedcount   int32       `db:"accessfailedcount" json:"accessfailedcount"`
+	Onboardingcompleted bool        `db:"onboardingcompleted" json:"onboardingcompleted"`
+}
+
+type Usercv struct {
+	ID             pgtype.UUID        `db:"id" json:"id"`
+	Userid         pgtype.UUID        `db:"userid" json:"userid"`
+	Urlfile        string             `db:"urlfile" json:"urlfile"`
+	Extractedtext  string             `db:"extractedtext" json:"extractedtext"`
+	Active         bool               `db:"active" json:"active"`
+	Createdby      string             `db:"createdby" json:"createdby"`
+	Createdat      pgtype.Timestamptz `db:"createdat" json:"createdat"`
+	Lastmodifiedby string             `db:"lastmodifiedby" json:"lastmodifiedby"`
+	Lastmodifiedat pgtype.Timestamptz `db:"lastmodifiedat" json:"lastmodifiedat"`
+}
+
+type Userpreference struct {
+	ID             pgtype.UUID        `db:"id" json:"id"`
+	Userid         pgtype.UUID        `db:"userid" json:"userid"`
+	Skills         []string           `db:"skills" json:"skills"`
+	Area           string             `db:"area" json:"area"`
+	Active         bool               `db:"active" json:"active"`
+	Createdby      string             `db:"createdby" json:"createdby"`
+	Createdat      pgtype.Timestamptz `db:"createdat" json:"createdat"`
+	Lastmodifiedby string             `db:"lastmodifiedby" json:"lastmodifiedby"`
+	Lastmodifiedat pgtype.Timestamptz `db:"lastmodifiedat" json:"lastmodifiedat"`
+	Levels         []string           `db:"levels" json:"levels"`
+}
+
+type Usersearchquery struct {
+	Userid         pgtype.UUID        `db:"userid" json:"userid"`
+	Searchqueryid  pgtype.UUID        `db:"searchqueryid" json:"searchqueryid"`
+	Createdat      pgtype.Timestamptz `db:"createdat" json:"createdat"`
+	Limiteduntil   pgtype.Timestamptz `db:"limiteduntil" json:"limiteduntil"`
+	Savedjobscount int32              `db:"savedjobscount" json:"savedjobscount"`
 }

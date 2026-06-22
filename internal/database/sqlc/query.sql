@@ -1,15 +1,16 @@
--- name: GetAuthor :one
-SELECT *
-FROM author
-WHERE id = $1
-LIMIT 1;
+-- name: GetJobs :many
+SELECT 
+    title,
+    description,
+    url,
+    isApplied,
+    status,
+    active,
+    platform,
+    company
+FROM jobs;
 
--- name: ListAuthors :many
-SELECT *
-FROM author
-ORDER BY name;
-
--- name: CreateAuthor :one
-INSERT INTO author (name, cpf)
-VALUES (lower(@name), @cpf)
-RETURNING *;
+-- name: GetUserById :one
+SELECT id, name, cpf, email, passwordHash, accessFailedCount, onboardingCompleted
+FROM users
+WHERE id = $1;

@@ -7,56 +7,53 @@ package sqlc
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const createAuthor = `-- name: CreateAuthor :one
-INSERT INTO author (name, cpf)
-VALUES (lower($1), $2)
-RETURNING id, name, cpf
+const getJobs = `-- name: GetJobs :many
+SELECT 
+    title,
+    description,
+    url,
+    isApplied,
+    status,
+    active,
+    platform,
+    company
+FROM jobs
 `
 
-type CreateAuthorParams struct {
-	Name string `db:"name" json:"name"`
-	Cpf  string `db:"cpf" json:"cpf"`
+type GetJobsRow struct {
+	Title       string `db:"title" json:"title"`
+	Description string `db:"description" json:"description"`
+	Url         string `db:"url" json:"url"`
+	Isapplied   bool   `db:"isapplied" json:"isapplied"`
+	Status      string `db:"status" json:"status"`
+	Active      bool   `db:"active" json:"active"`
+	Platform    string `db:"platform" json:"platform"`
+	Company     string `db:"company" json:"company"`
 }
 
-func (q *Queries) CreateAuthor(ctx context.Context, arg CreateAuthorParams) (Author, error) {
-	row := q.db.QueryRow(ctx, createAuthor, arg.Name, arg.Cpf)
-	var i Author
-	err := row.Scan(&i.ID, &i.Name, &i.Cpf)
-	return i, err
-}
-
-const getAuthor = `-- name: GetAuthor :one
-SELECT id, name, cpf
-FROM author
-WHERE id = $1
-LIMIT 1
-`
-
-func (q *Queries) GetAuthor(ctx context.Context, id int32) (Author, error) {
-	row := q.db.QueryRow(ctx, getAuthor, id)
-	var i Author
-	err := row.Scan(&i.ID, &i.Name, &i.Cpf)
-	return i, err
-}
-
-const listAuthors = `-- name: ListAuthors :many
-SELECT id, name, cpf
-FROM author
-ORDER BY name
-`
-
-func (q *Queries) ListAuthors(ctx context.Context) ([]Author, error) {
-	rows, err := q.db.Query(ctx, listAuthors)
+func (q *Queries) GetJobs(ctx context.Context) ([]GetJobsRow, error) {
+	rows, err := q.db.Query(ctx, getJobs)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Author
+	var items []GetJobsRow
 	for rows.Next() {
-		var i Author
-		if err := rows.Scan(&i.ID, &i.Name, &i.Cpf); err != nil {
+		var i GetJobsRow
+		if err := rows.Scan(
+			&i.Title,
+			&i.Description,
+			&i.Url,
+			&i.Isapplied,
+			&i.Status,
+			&i.Active,
+			&i.Platform,
+			&i.Company,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -65,4 +62,25 @@ func (q *Queries) ListAuthors(ctx context.Context) ([]Author, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const getUserById = `-- name: GetUserById :one
+SELECT id, name, cpf, email, passwordHash, accessFailedCount, onboardingCompleted
+FROM users
+WHERE id = $1
+`
+
+func (q *Queries) GetUserById(ctx context.Context, id pgtype.UUID) (User, error) {
+	row := q.db.QueryRow(ctx, getUserById, id)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Cpf,
+		&i.Email,
+		&i.Passwordhash,
+		&i.Accessfailedcount,
+		&i.Onboardingcompleted,
+	)
+	return i, err
 }
