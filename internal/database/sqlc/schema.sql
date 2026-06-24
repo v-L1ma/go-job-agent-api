@@ -1,96 +1,96 @@
-CREATE TABLE jobs (
-  id uuid not null,
-  plataformJobId text not null,
-  title text not null,
-  description text not null,
-  url text not null,
-  isApplied boolean not null,
-  status text not null,
-  active boolean not null,
-  createdBy text not null,
-  createdAt timestamp with time zone not null,
-  lastModifiedBy text not null,
-  lastModifiedAt timestamp with time zone not null,
-  platform text not null default ''::text,
-  company text not null default ''::text,
+CREATE TABLE IF NOT EXISTS public."Jobs" (
+  "Id" uuid not null,
+  "PlataformJobId" text not null,
+  "Title" text not null,
+  "Description" text not null,
+  "Url" text not null,
+  "IsApplied" boolean not null,
+  "Status" text not null,
+  "Active" boolean not null,
+  "CreatedBy" text not null,
+  "CreatedAt" timestamp with time zone not null,
+  "LastModifiedBy" text not null,
+  "LastModifiedAt" timestamp with time zone not null,
+  "Platform" text not null default ''::text,
+  "Company" text not null default ''::text,
   constraint PK_Jobs primary key (Id)
 );
 
-CREATE TABLE searchQueries (
-  id uuid not null,
-  query text not null,
-  keywords text[] not null,
-  area text not null,
-  normalizedhash text not null,
-  active boolean not null,
-  createdby text not null,
-  createdat timestamp with time zone not null,
-  lastmodifiedby text not null,
-  lastmodifiedat timestamp with time zone not null,
-  lastexecutedat timestamp with time zone not null default '-infinity'::timestamp with time zone,
-  levels text[] not null default array[]::text[],
+CREATE TABLE IF NOT EXISTS public."SearchQueries" (
+  "Id" uuid not null,
+  "Query" text not null,
+  "Keywords" text[] not null,
+  "Area" text not null,
+  "NormalizedHash" text not null,
+  "Active" boolean not null,
+  "CreatedBy" text not null,
+  "CreatedAt" timestamp with time zone not null,
+  "LastModifiedBy" text not null,
+  "LastModifiedAt" timestamp with time zone not null,
+  "LastExecutedAt" timestamp with time zone not null default '-infinity'::timestamp with time zone,
+  "Levels" text[] not null default array[]::text[],
   constraint PK_SearchQueries primary key (Id)
 );
 
-create index IF not exists IX_SearchQueries_NormalizedHash on searchQueries using btree (NormalizedHash);
+create index IF not exists IX_SearchQueries_NormalizedHash on public."SearchQueries" using btree (NormalizedHash);
 
-CREATE TABLE userCvs (
-  id uuid not null,
-  userId uuid not null,
-  urlFile text not null,
-  extractedText text not null,
-  active boolean not null,
-  createdBy text not null,
-  createdAt timestamp with time zone not null,
-  lastModifiedBy text not null,
-  lastModifiedAt timestamp with time zone not null,
+CREATE TABLE IF NOT EXISTS public."UserCvs" (
+  "Id" uuid not null,
+  "UserId" uuid not null,
+  "UrlFile" text not null,
+  "ExtractedText" text not null,
+  "Active" boolean not null,
+  "CreatedBy" text not null,
+  "CreatedAt" timestamp with time zone not null,
+  "LastModifiedBy" text not null,
+  "LastModifiedAt" timestamp with time zone not null,
   constraint PK_UserCvs primary key (Id)
 );
 
-CREATE TABLE userPreferences (
-  id uuid not null,
-  userId uuid not null,
-  skills text[] not null,
-  area text not null,
-  active boolean not null,
-  createdBy text not null,
-  createdAt timestamp with time zone not null,
-  lastModifiedBy text not null,
-  lastModifiedAt timestamp with time zone not null,
-  levels text[] not null default array[]::text[],
+CREATE TABLE IF NOT EXISTS public."UserPreferences" (
+  "Id" uuid not null,
+  "UserId" uuid not null,
+  "Skills" text[] not null,
+  "Area" text not null,
+  "Active" boolean not null,
+  "CreatedBy" text not null,
+  "CreatedAt" timestamp with time zone not null,
+  "LastModifiedBy" text not null,
+  "LastModifiedAt" timestamp with time zone not null,
+  "Levels" text[] not null default array[]::text[],
   constraint PK_UserPreferences primary key (Id)
 );
 
-CREATE TABLE userSearchQueries (
-  userId uuid not null,
-  searchQueryId uuid not null,
-  createdAt timestamp with time zone not null,
-  limitedUntil timestamp with time zone not null default '-infinity'::timestamp with time zone,
-  savedJobsCount integer not null default 0,
+CREATE TABLE IF NOT EXISTS public."UserSearchQueries" (
+  "UserId" uuid not null,
+  "SearchQueryId" uuid not null,
+  "CreatedAt" timestamp with time zone not null,
+  "LimitedUntil" timestamp with time zone not null default '-infinity'::timestamp with time zone,
+  "SavedJobsCount" integer not null default 0,
   constraint PK_UserSearchQueries primary key ("UserId", "SearchQueryId")
 );
 
-CREATE TABLE generatedCvs (
-  id uuid not null,
-  userId uuid not null,
-  urlFile text not null,
-  active boolean not null,
-  createdBy text not null,
-  createdAt timestamp with time zone not null,
-  lastModifiedBy text not null,
-  lastModifiedAt timestamp with time zone not null,
+CREATE TABLE IF NOT EXISTS public."GeneratedCvs" (
+  "Id" uuid not null,
+  "UserId" uuid not null,
+  "UrlFile" text not null,
+  "Active" boolean not null,
+  "CreatedBy" text not null,
+  "CreatedAt" timestamp with time zone not null,
+  "LastModifiedBy" text not null,
+  "LastModifiedAt" timestamp with time zone not null,
   constraint PK_GeneratedCvs primary key ("Id")
 );
 
-CREATE TABLE users (
-  id uuid not null,
-  name text not null,
-  CPF text not null,
-  email character varying(256) null,
-  passwordHash text null,
-  accessFailedCount integer not null,
-  onboardingCompleted boolean not null default false,
-  constraint PK_AspNetUsers primary key ("id") 
+CREATE TABLE IF NOT EXISTS public."Users" (
+  "Id" uuid not null,
+  "Name" text not null,
+  "Cpf" text not null,
+  "Email" character varying(256) null,
+  "PasswordHash" text null,
+  "AccessFailedCount" integer not null,
+  "OnboardingCompleted" boolean not null default false,
+  constraint PK_AspNetUsers primary key ("Id") 
 );
 
-create index IF not exists "EmailIndex" on users using btree ("NormalizedEmail");
+create index IF not exists "EmailIndex" on public."Users" using btree ("NormalizedEmail");

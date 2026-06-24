@@ -1,16 +1,17 @@
 -- name: GetJobs :many
-SELECT 
-    title,
-    description,
-    url,
-    isApplied,
-    status,
-    active,
-    platform,
-    company
-FROM jobs;
+SELECT DISTINCT j.*
+FROM "Jobs" j
+WHERE EXISTS (
+    SELECT 1
+    FROM "UserSearchQueries" usq
+    JOIN "SearchQueries" sq
+        ON sq."Id" = usq."SearchQueryId"
+    CROSS JOIN LATERAL unnest(sq."Keywords") AS keyword
+    WHERE usq."UserId" = $1
+      AND j."Title" ILIKE '%' || keyword || '%'
+);
 
 -- name: GetUserById :one
-SELECT id, name, cpf, email, passwordHash, accessFailedCount, onboardingCompleted
-FROM users
-WHERE id = $1;
+SELECT "Id", "Name", "Cpf", "Email", "PasswordHash", "AccessFailedCount", "OnboardingCompleted"
+FROM public."Users"
+WHERE "Id" = $1;

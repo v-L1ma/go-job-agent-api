@@ -12,45 +12,41 @@ import (
 )
 
 const getJobs = `-- name: GetJobs :many
-SELECT 
-    title,
-    description,
-    url,
-    isApplied,
-    status,
-    active,
-    platform,
-    company
-FROM jobs
+SELECT DISTINCT j."Id", j."PlataformJobId", j."Title", j."Description", j."Url", j."IsApplied", j."Status", j."Active", j."CreatedBy", j."CreatedAt", j."LastModifiedBy", j."LastModifiedAt", j."Platform", j."Company"
+FROM "Jobs" j
+WHERE EXISTS (
+    SELECT 1
+    FROM "UserSearchQueries" usq
+    JOIN "SearchQueries" sq
+        ON sq."Id" = usq."SearchQueryId"
+    CROSS JOIN LATERAL unnest(sq."Keywords") AS keyword
+    WHERE usq."UserId" = $1
+      AND j."Title" ILIKE '%' || keyword || '%'
+)
 `
 
-type GetJobsRow struct {
-	Title       string `db:"title" json:"title"`
-	Description string `db:"description" json:"description"`
-	Url         string `db:"url" json:"url"`
-	Isapplied   bool   `db:"isapplied" json:"isapplied"`
-	Status      string `db:"status" json:"status"`
-	Active      bool   `db:"active" json:"active"`
-	Platform    string `db:"platform" json:"platform"`
-	Company     string `db:"company" json:"company"`
-}
-
-func (q *Queries) GetJobs(ctx context.Context) ([]GetJobsRow, error) {
-	rows, err := q.db.Query(ctx, getJobs)
+func (q *Queries) GetJobs(ctx context.Context, userid pgtype.UUID) ([]Job, error) {
+	rows, err := q.db.Query(ctx, getJobs, userid)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []GetJobsRow
+	var items []Job
 	for rows.Next() {
-		var i GetJobsRow
+		var i Job
 		if err := rows.Scan(
+			&i.Id,
+			&i.PlataformJobId,
 			&i.Title,
 			&i.Description,
 			&i.Url,
-			&i.Isapplied,
+			&i.IsApplied,
 			&i.Status,
 			&i.Active,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.LastModifiedBy,
+			&i.LastModifiedAt,
 			&i.Platform,
 			&i.Company,
 		); err != nil {
@@ -65,22 +61,22 @@ func (q *Queries) GetJobs(ctx context.Context) ([]GetJobsRow, error) {
 }
 
 const getUserById = `-- name: GetUserById :one
-SELECT id, name, cpf, email, passwordHash, accessFailedCount, onboardingCompleted
-FROM users
-WHERE id = $1
+SELECT "Id", "Name", "Cpf", "Email", "PasswordHash", "AccessFailedCount", "OnboardingCompleted"
+FROM public."Users"
+WHERE "Id" = $1
 `
 
 func (q *Queries) GetUserById(ctx context.Context, id pgtype.UUID) (User, error) {
 	row := q.db.QueryRow(ctx, getUserById, id)
 	var i User
 	err := row.Scan(
-		&i.ID,
+		&i.Id,
 		&i.Name,
 		&i.Cpf,
 		&i.Email,
-		&i.Passwordhash,
-		&i.Accessfailedcount,
-		&i.Onboardingcompleted,
+		&i.PasswordHash,
+		&i.AccessFailedCount,
+		&i.OnboardingCompleted,
 	)
 	return i, err
 }
