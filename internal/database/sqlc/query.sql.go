@@ -11,6 +11,213 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const createUserPreferences = `-- name: CreateUserPreferences :exec
+INSERT INTO "UserPreferences" ("UserId", "Skills", "Levels", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt") 
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+`
+
+type CreateUserPreferencesParams struct {
+	UserId         pgtype.UUID        `db:"UserId" json:"UserId"`
+	Skills         []string           `db:"Skills" json:"Skills"`
+	Levels         []string           `db:"Levels" json:"Levels"`
+	Active         bool               `db:"Active" json:"Active"`
+	CreatedBy      string             `db:"CreatedBy" json:"CreatedBy"`
+	CreatedAt      pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+	LastModifiedBy string             `db:"LastModifiedBy" json:"LastModifiedBy"`
+	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
+}
+
+func (q *Queries) CreateUserPreferences(ctx context.Context, arg CreateUserPreferencesParams) error {
+	_, err := q.db.Exec(ctx, createUserPreferences,
+		arg.UserId,
+		arg.Skills,
+		arg.Levels,
+		arg.Active,
+		arg.CreatedBy,
+		arg.CreatedAt,
+		arg.LastModifiedBy,
+		arg.LastModifiedAt,
+	)
+	return err
+}
+
+const evaluateCv = `-- name: EvaluateCv :exec
+INSERT INTO "CvEvaluations" ("UserId", "GeneratedCvId", "Liked", "Feedback", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt") 
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+`
+
+type EvaluateCvParams struct {
+	UserId         pgtype.UUID        `db:"UserId" json:"UserId"`
+	GeneratedCvId  pgtype.UUID        `db:"GeneratedCvId" json:"GeneratedCvId"`
+	Liked          bool               `db:"Liked" json:"Liked"`
+	Feedback       pgtype.Text        `db:"Feedback" json:"Feedback"`
+	Active         bool               `db:"Active" json:"Active"`
+	CreatedBy      string             `db:"CreatedBy" json:"CreatedBy"`
+	CreatedAt      pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+	LastModifiedBy string             `db:"LastModifiedBy" json:"LastModifiedBy"`
+	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
+}
+
+func (q *Queries) EvaluateCv(ctx context.Context, arg EvaluateCvParams) error {
+	_, err := q.db.Exec(ctx, evaluateCv,
+		arg.UserId,
+		arg.GeneratedCvId,
+		arg.Liked,
+		arg.Feedback,
+		arg.Active,
+		arg.CreatedBy,
+		arg.CreatedAt,
+		arg.LastModifiedBy,
+		arg.LastModifiedAt,
+	)
+	return err
+}
+
+const evaluateJob = `-- name: EvaluateJob :exec
+INSERT INTO "JobEvaluations" ("UserId", "JobId", "Liked", "Feedback", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt") 
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+`
+
+type EvaluateJobParams struct {
+	UserId         pgtype.UUID        `db:"UserId" json:"UserId"`
+	JobId          pgtype.UUID        `db:"JobId" json:"JobId"`
+	Liked          bool               `db:"Liked" json:"Liked"`
+	Feedback       pgtype.Text        `db:"Feedback" json:"Feedback"`
+	Active         bool               `db:"Active" json:"Active"`
+	CreatedBy      string             `db:"CreatedBy" json:"CreatedBy"`
+	CreatedAt      pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+	LastModifiedBy string             `db:"LastModifiedBy" json:"LastModifiedBy"`
+	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
+}
+
+func (q *Queries) EvaluateJob(ctx context.Context, arg EvaluateJobParams) error {
+	_, err := q.db.Exec(ctx, evaluateJob,
+		arg.UserId,
+		arg.JobId,
+		arg.Liked,
+		arg.Feedback,
+		arg.Active,
+		arg.CreatedBy,
+		arg.CreatedAt,
+		arg.LastModifiedBy,
+		arg.LastModifiedAt,
+	)
+	return err
+}
+
+const existsCvEvaluation = `-- name: ExistsCvEvaluation :one
+SELECT EXISTS (
+    SELECT 1
+    FROM "CvEvaluations"
+    WHERE "UserId" = $1 AND "GeneratedCvId" = $2
+) AS "exists"
+`
+
+type ExistsCvEvaluationParams struct {
+	UserId        pgtype.UUID `db:"UserId" json:"UserId"`
+	GeneratedCvId pgtype.UUID `db:"GeneratedCvId" json:"GeneratedCvId"`
+}
+
+func (q *Queries) ExistsCvEvaluation(ctx context.Context, arg ExistsCvEvaluationParams) (bool, error) {
+	row := q.db.QueryRow(ctx, existsCvEvaluation, arg.UserId, arg.GeneratedCvId)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const existsJobEvaluation = `-- name: ExistsJobEvaluation :one
+SELECT EXISTS (
+    SELECT 1
+    FROM "JobEvaluations"
+    WHERE "UserId" = $1 AND "JobId" = $2
+) AS "exists"
+`
+
+type ExistsJobEvaluationParams struct {
+	UserId pgtype.UUID `db:"UserId" json:"UserId"`
+	JobId  pgtype.UUID `db:"JobId" json:"JobId"`
+}
+
+func (q *Queries) ExistsJobEvaluation(ctx context.Context, arg ExistsJobEvaluationParams) (bool, error) {
+	row := q.db.QueryRow(ctx, existsJobEvaluation, arg.UserId, arg.JobId)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const existsUserById = `-- name: ExistsUserById :one
+SELECT EXISTS (
+    SELECT 1
+    FROM "AspNetUsers"
+    WHERE "Id" = $1
+) AS "exists"
+`
+
+func (q *Queries) ExistsUserById(ctx context.Context, id pgtype.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, existsUserById, id)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const findUserPreferences = `-- name: FindUserPreferences :one
+SELECT EXISTS (
+    SELECT 1
+    FROM "UserPreferences"
+    WHERE "UserId" = $1
+) AS "exists"
+`
+
+func (q *Queries) FindUserPreferences(ctx context.Context, userid pgtype.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, findUserPreferences, userid)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const getJobById = `-- name: GetJobById :one
+SELECT "Id", 
+    "Title", 
+    "Platform", 
+    "Company", 
+    "Description",
+    "Url", 
+    "IsApplied", 
+    "Status", 
+    "Active" 
+FROM "Jobs" 
+WHERE "Id" = $1
+`
+
+type GetJobByIdRow struct {
+	Id          pgtype.UUID `db:"Id" json:"Id"`
+	Title       string      `db:"Title" json:"Title"`
+	Platform    string      `db:"Platform" json:"Platform"`
+	Company     string      `db:"Company" json:"Company"`
+	Description string      `db:"Description" json:"Description"`
+	Url         string      `db:"Url" json:"Url"`
+	IsApplied   bool        `db:"IsApplied" json:"IsApplied"`
+	Status      string      `db:"Status" json:"Status"`
+	Active      bool        `db:"Active" json:"Active"`
+}
+
+func (q *Queries) GetJobById(ctx context.Context, id pgtype.UUID) (GetJobByIdRow, error) {
+	row := q.db.QueryRow(ctx, getJobById, id)
+	var i GetJobByIdRow
+	err := row.Scan(
+		&i.Id,
+		&i.Title,
+		&i.Platform,
+		&i.Company,
+		&i.Description,
+		&i.Url,
+		&i.IsApplied,
+		&i.Status,
+		&i.Active,
+	)
+	return i, err
+}
+
 const getJobs = `-- name: GetJobs :many
 SELECT DISTINCT j."Id", j."PlataformJobId", j."Title", j."Description", j."Url", j."IsApplied", j."Status", j."Active", j."CreatedBy", j."CreatedAt", j."LastModifiedBy", j."LastModifiedAt", j."Platform", j."Company"
 FROM "Jobs" j
@@ -62,13 +269,13 @@ func (q *Queries) GetJobs(ctx context.Context, userid pgtype.UUID) ([]Job, error
 
 const getUserById = `-- name: GetUserById :one
 SELECT "Id", "Name", "Cpf", "Email", "PasswordHash", "AccessFailedCount", "OnboardingCompleted"
-FROM public."Users"
+FROM public."AspNetUsers"
 WHERE "Id" = $1
 `
 
-func (q *Queries) GetUserById(ctx context.Context, id pgtype.UUID) (User, error) {
+func (q *Queries) GetUserById(ctx context.Context, id pgtype.UUID) (AspNetUser, error) {
 	row := q.db.QueryRow(ctx, getUserById, id)
-	var i User
+	var i AspNetUser
 	err := row.Scan(
 		&i.Id,
 		&i.Name,
@@ -79,4 +286,65 @@ func (q *Queries) GetUserById(ctx context.Context, id pgtype.UUID) (User, error)
 		&i.OnboardingCompleted,
 	)
 	return i, err
+}
+
+const getUserPreferences = `-- name: GetUserPreferences :many
+SELECT "UserId", 
+        "Skills", 
+        "Levels" 
+FROM "UserPreferences" 
+WHERE "UserId" = $1 AND "Active" = true
+`
+
+type GetUserPreferencesRow struct {
+	UserId pgtype.UUID `db:"UserId" json:"UserId"`
+	Skills []string    `db:"Skills" json:"Skills"`
+	Levels []string    `db:"Levels" json:"Levels"`
+}
+
+func (q *Queries) GetUserPreferences(ctx context.Context, userid pgtype.UUID) ([]GetUserPreferencesRow, error) {
+	rows, err := q.db.Query(ctx, getUserPreferences, userid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetUserPreferencesRow
+	for rows.Next() {
+		var i GetUserPreferencesRow
+		if err := rows.Scan(&i.UserId, &i.Skills, &i.Levels); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const updateUserPreferences = `-- name: UpdateUserPreferences :exec
+UPDATE "UserPreferences" 
+SET "UserId" = $1, "Skills" = $2, "Levels" = $3, "Active" = $4, "LastModifiedBy" = $5, "LastModifiedAt" = $6 
+WHERE "UserId" = $1
+`
+
+type UpdateUserPreferencesParams struct {
+	UserId         pgtype.UUID        `db:"UserId" json:"UserId"`
+	Skills         []string           `db:"Skills" json:"Skills"`
+	Levels         []string           `db:"Levels" json:"Levels"`
+	Active         bool               `db:"Active" json:"Active"`
+	LastModifiedBy string             `db:"LastModifiedBy" json:"LastModifiedBy"`
+	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
+}
+
+func (q *Queries) UpdateUserPreferences(ctx context.Context, arg UpdateUserPreferencesParams) error {
+	_, err := q.db.Exec(ctx, updateUserPreferences,
+		arg.UserId,
+		arg.Skills,
+		arg.Levels,
+		arg.Active,
+		arg.LastModifiedBy,
+		arg.LastModifiedAt,
+	)
+	return err
 }

@@ -24,7 +24,27 @@ func RegisterRoutes(e *echo.Echo, db *database.Database) {
 	// 	return c.JSON(http.StatusOK, authors)
 	// })
 
-	e.GET("/jobs", func(c *echo.Context) error {
+	e.GET("/jobs/me/:userId", func(c *echo.Context) error {
 		return handlers.GetJobs(c, db)
+	})
+
+	e.GET("/jobs/:jobId", func(c *echo.Context) error{
+		return handlers.GetJobById(c, db)
+	})
+
+	e.POST("/jobs/:jobId/rate", func (c *echo.Context) error{
+		return handlers.RateJob(c, db)
+	})
+
+	e.POST("/users/preferences/:userId",func (c *echo.Context) error{
+		return handlers.SetUserPreferences(c, db)
+	})
+
+	e.GET("users/preferences/:userId", func (c *echo.Context) error{
+		return handlers.GetUserPreferences(c, db)
+	})
+
+	e.POST("users/cv/:userId", func (c *echo.Context) error{
+		return handlers.UploadCv(c, db)
 	})
 }

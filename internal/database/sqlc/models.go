@@ -8,6 +8,29 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AspNetUser struct {
+	Id                  pgtype.UUID `db:"Id" json:"Id"`
+	Name                string      `db:"Name" json:"Name"`
+	Cpf                 string      `db:"Cpf" json:"Cpf"`
+	Email               pgtype.Text `db:"Email" json:"Email"`
+	PasswordHash        pgtype.Text `db:"PasswordHash" json:"PasswordHash"`
+	AccessFailedCount   int32       `db:"AccessFailedCount" json:"AccessFailedCount"`
+	OnboardingCompleted bool        `db:"OnboardingCompleted" json:"OnboardingCompleted"`
+}
+
+type CvEvaluation struct {
+	Id             pgtype.UUID        `db:"Id" json:"Id"`
+	UserId         pgtype.UUID        `db:"UserId" json:"UserId"`
+	GeneratedCvId  pgtype.UUID        `db:"GeneratedCvId" json:"GeneratedCvId"`
+	Liked          bool               `db:"Liked" json:"Liked"`
+	Feedback       pgtype.Text        `db:"Feedback" json:"Feedback"`
+	Active         bool               `db:"Active" json:"Active"`
+	CreatedBy      string             `db:"CreatedBy" json:"CreatedBy"`
+	CreatedAt      pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+	LastModifiedBy string             `db:"LastModifiedBy" json:"LastModifiedBy"`
+	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
+}
+
 type GeneratedCv struct {
 	Id             pgtype.UUID        `db:"Id" json:"Id"`
 	UserId         pgtype.UUID        `db:"UserId" json:"UserId"`
@@ -36,6 +59,19 @@ type Job struct {
 	Company        string             `db:"Company" json:"Company"`
 }
 
+type JobEvaluation struct {
+	Id             pgtype.UUID        `db:"Id" json:"Id"`
+	UserId         pgtype.UUID        `db:"UserId" json:"UserId"`
+	JobId          pgtype.UUID        `db:"JobId" json:"JobId"`
+	Liked          bool               `db:"Liked" json:"Liked"`
+	Feedback       pgtype.Text        `db:"Feedback" json:"Feedback"`
+	Active         bool               `db:"Active" json:"Active"`
+	CreatedBy      string             `db:"CreatedBy" json:"CreatedBy"`
+	CreatedAt      pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+	LastModifiedBy string             `db:"LastModifiedBy" json:"LastModifiedBy"`
+	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
+}
+
 type SearchQuery struct {
 	Id             pgtype.UUID        `db:"Id" json:"Id"`
 	Query          string             `db:"Query" json:"Query"`
@@ -49,16 +85,6 @@ type SearchQuery struct {
 	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
 	LastExecutedAt pgtype.Timestamptz `db:"LastExecutedAt" json:"LastExecutedAt"`
 	Levels         []string           `db:"Levels" json:"Levels"`
-}
-
-type User struct {
-	Id                  pgtype.UUID `db:"Id" json:"Id"`
-	Name                string      `db:"Name" json:"Name"`
-	Cpf                 string      `db:"Cpf" json:"Cpf"`
-	Email               pgtype.Text `db:"Email" json:"Email"`
-	PasswordHash        pgtype.Text `db:"PasswordHash" json:"PasswordHash"`
-	AccessFailedCount   int32       `db:"AccessFailedCount" json:"AccessFailedCount"`
-	OnboardingCompleted bool        `db:"OnboardingCompleted" json:"OnboardingCompleted"`
 }
 
 type UserCv struct {

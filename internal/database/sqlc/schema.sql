@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS public."GeneratedCvs" (
   constraint PK_GeneratedCvs primary key ("Id")
 );
 
-CREATE TABLE IF NOT EXISTS public."Users" (
+CREATE TABLE IF NOT EXISTS public."AspNetUsers" (
   "Id" uuid not null,
   "Name" text not null,
   "Cpf" text not null,
@@ -93,4 +93,38 @@ CREATE TABLE IF NOT EXISTS public."Users" (
   constraint PK_AspNetUsers primary key ("Id") 
 );
 
-create index IF not exists "EmailIndex" on public."Users" using btree ("NormalizedEmail");
+create index IF not exists "EmailIndex" on public."AspNetUsers" using btree ("NormalizedEmail");
+
+create table public."JobEvaluations" (
+  "Id" uuid not null default gen_random_uuid(),
+  "UserId" uuid not null,
+  "JobId" uuid not null,
+  "Liked" boolean not null,
+  "Feedback" text null,
+  "Active" boolean not null,
+  "CreatedBy" text not null,
+  "CreatedAt" timestamp with time zone not null,
+  "LastModifiedBy" text not null,
+  "LastModifiedAt" timestamp with time zone not null,
+  constraint PK_JobEvaluations primary key ("Id"),
+  constraint FK_JobEvaluations_Jobs_JobId foreign KEY ("JobId") references "Jobs" ("Id") on delete CASCADE
+);
+
+create index IF not exists "IX_JobEvaluations_JobId" on public."JobEvaluations" using btree ("JobId") TABLESPACE pg_default;
+
+create table public."CvEvaluations" (
+  "Id" uuid not null default gen_random_uuid(),
+  "UserId" uuid not null,
+  "GeneratedCvId" uuid not null,
+  "Liked" boolean not null,
+  "Feedback" text null,
+  "Active" boolean not null,
+  "CreatedBy" text not null,
+  "CreatedAt" timestamp with time zone not null,
+  "LastModifiedBy" text not null,
+  "LastModifiedAt" timestamp with time zone not null,
+  constraint PK_CvEvaluations primary key ("Id"),
+  constraint FK_CvEvaluations_GeneratedCvs_GeneratedCvId foreign KEY ("GeneratedCvId") references "GeneratedCvs" ("Id") on delete CASCADE
+);
+
+create index IF not exists "IX_CvEvaluations_GeneratedCvId" on public."CvEvaluations" using btree ("GeneratedCvId") TABLESPACE pg_default;
