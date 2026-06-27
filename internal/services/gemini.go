@@ -7,16 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"strings"
 
 	"google.golang.org/genai"
 )
-
-type Question struct {
-	Question string
-	Type     string
-	Options  []string
-}
 
 type GeminiResponseWrapper struct {
     Respostas []Answer `json:"respostas"`
@@ -41,21 +34,21 @@ func init() {
 	}
 }
 
-func BuildPrompt(questions []Question) string {
-	var sb strings.Builder
+// func BuildPrompt(questions []Question) string {
+// 	var sb strings.Builder
 
-	sb.WriteString("Retorne um json no formato {respostas:[{pergunta:'texto pergunta', resposta:'texto resposta'}]} respondendo as seguintes perguntas com dados ficticios:\n")
-	sb.WriteString("Não precisa formatar o json de resposta, apenas retorne o json, não simule quebra de linha:\n")
-	sb.WriteString("Perguntas:\n")
-	data, err := json.Marshal(questions)
-	if err != nil {
-		fmt.Printf("failed to marshal questions: %v\n", err)
-		return ""
-	}
-	sb.Write(data)
+// 	sb.WriteString("Retorne um json no formato {respostas:[{pergunta:'texto pergunta', resposta:'texto resposta'}]} respondendo as seguintes perguntas com dados ficticios:\n")
+// 	sb.WriteString("Não precisa formatar o json de resposta, apenas retorne o json, não simule quebra de linha:\n")
+// 	sb.WriteString("Perguntas:\n")
+// 	data, err := json.Marshal(questions)
+// 	if err != nil {
+// 		fmt.Printf("failed to marshal questions: %v\n", err)
+// 		return ""
+// 	}
+// 	sb.Write(data)
 
-	return sb.String()
-}
+// 	return sb.String()
+// }
 
 func ParseGeminiResponse(rawResponse string) (GeminiResponseWrapper, error) {
     var wrapper GeminiResponseWrapper
@@ -67,12 +60,10 @@ func ParseGeminiResponse(rawResponse string) (GeminiResponseWrapper, error) {
     return wrapper, nil
 }
 
-func GenerateResponse(questions []Question) (GeminiResponseWrapper, error) {
+func GenerateResponse(prompt string) (GeminiResponseWrapper, error) {
 	if client == nil {
 		return GeminiResponseWrapper{}, errors.New("gemini client not initialized")
 	}
-
-	prompt := BuildPrompt(questions)
 
 	fmt.Printf("Generated Prompt:\n%s\n", prompt)
 
