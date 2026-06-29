@@ -13,10 +13,10 @@ getJobs ===================== FEITO
 jobMatchScore - esse de alguma forma precisa ser dentro de getJobs ou por um cron 
 
 evaluateGeneratedCV ===================== FEITO
-generateCv
+generateCv ===================== FEITO
 SavePreferences ===================== FEITO
 updateProfile
-uploadCv
+uploadCv ===================== FEITO
 
 getGeneratedCvs
 getPreferences ===================== FEITO

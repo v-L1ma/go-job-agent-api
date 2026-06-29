@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS public."SearchQueries" (
 create index IF not exists IX_SearchQueries_NormalizedHash on public."SearchQueries" using btree (NormalizedHash);
 
 CREATE TABLE IF NOT EXISTS public."UserCvs" (
-  "Id" uuid not null,
+  "Id" uuid not null default gen_random_uuid(),
   "UserId" uuid not null,
   "UrlFile" text not null,
   "ExtractedText" text not null,

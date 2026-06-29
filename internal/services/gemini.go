@@ -60,7 +60,7 @@ func ParseGeminiResponse(rawResponse string) (GeminiResponseWrapper, error) {
     return wrapper, nil
 }
 
-func GenerateResponse(prompt string) (GeminiResponseWrapper, error) {
+func GenerateResponse(prompt string) (any, error) {
 	if client == nil {
 		return GeminiResponseWrapper{}, errors.New("gemini client not initialized")
 	}
@@ -90,12 +90,12 @@ func GenerateResponse(prompt string) (GeminiResponseWrapper, error) {
 
 	geminiResponse := response.Candidates[0].Content.Parts[len(response.Candidates)].Text
 
-	respostas, err := ParseGeminiResponse(geminiResponse)
-	if err != nil {
-		log.Printf("Erro ao processar respostas: %v", err)
-	}
+	// respostas, err := ParseGeminiResponse(geminiResponse)
+	// if err != nil {
+	// 	log.Printf("Erro ao processar respostas: %v", err)
+	// }
 
-	return respostas, nil
+	return geminiResponse, nil
 }
 
 func debugPrint[T any](r *T) {

@@ -80,3 +80,18 @@ SELECT "UserId",
         "Levels" 
 FROM "UserPreferences" 
 WHERE "UserId" = $1 AND "Active" = true;
+
+-- name: SaveUserCv :exec
+INSERT INTO "UserCvs" ("UserId", "UrlFile", "ExtractedText", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt") 
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
+
+-- name: GetUserCv :one
+SELECT "UserId", 
+"UrlFile", 
+"ExtractedText", 
+"Active", 
+"CreatedBy", 
+"CreatedAt", 
+"LastModifiedBy", 
+"LastModifiedAt" 
+FROM "UserCvs" WHERE "UserId" = $1;

@@ -288,6 +288,45 @@ func (q *Queries) GetUserById(ctx context.Context, id pgtype.UUID) (AspNetUser, 
 	return i, err
 }
 
+const getUserCv = `-- name: GetUserCv :one
+SELECT "UserId", 
+"UrlFile", 
+"ExtractedText", 
+"Active", 
+"CreatedBy", 
+"CreatedAt", 
+"LastModifiedBy", 
+"LastModifiedAt" 
+FROM "UserCvs" WHERE "UserId" = $1
+`
+
+type GetUserCvRow struct {
+	UserId         pgtype.UUID        `db:"UserId" json:"UserId"`
+	UrlFile        string             `db:"UrlFile" json:"UrlFile"`
+	ExtractedText  string             `db:"ExtractedText" json:"ExtractedText"`
+	Active         bool               `db:"Active" json:"Active"`
+	CreatedBy      string             `db:"CreatedBy" json:"CreatedBy"`
+	CreatedAt      pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+	LastModifiedBy string             `db:"LastModifiedBy" json:"LastModifiedBy"`
+	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
+}
+
+func (q *Queries) GetUserCv(ctx context.Context, userid pgtype.UUID) (GetUserCvRow, error) {
+	row := q.db.QueryRow(ctx, getUserCv, userid)
+	var i GetUserCvRow
+	err := row.Scan(
+		&i.UserId,
+		&i.UrlFile,
+		&i.ExtractedText,
+		&i.Active,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.LastModifiedBy,
+		&i.LastModifiedAt,
+	)
+	return i, err
+}
+
 const getUserPreferences = `-- name: GetUserPreferences :many
 SELECT "UserId", 
         "Skills", 
@@ -320,6 +359,36 @@ func (q *Queries) GetUserPreferences(ctx context.Context, userid pgtype.UUID) ([
 		return nil, err
 	}
 	return items, nil
+}
+
+const saveUserCv = `-- name: SaveUserCv :exec
+INSERT INTO "UserCvs" ("UserId", "UrlFile", "ExtractedText", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt") 
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+`
+
+type SaveUserCvParams struct {
+	UserId         pgtype.UUID        `db:"UserId" json:"UserId"`
+	UrlFile        string             `db:"UrlFile" json:"UrlFile"`
+	ExtractedText  string             `db:"ExtractedText" json:"ExtractedText"`
+	Active         bool               `db:"Active" json:"Active"`
+	CreatedBy      string             `db:"CreatedBy" json:"CreatedBy"`
+	CreatedAt      pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+	LastModifiedBy string             `db:"LastModifiedBy" json:"LastModifiedBy"`
+	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
+}
+
+func (q *Queries) SaveUserCv(ctx context.Context, arg SaveUserCvParams) error {
+	_, err := q.db.Exec(ctx, saveUserCv,
+		arg.UserId,
+		arg.UrlFile,
+		arg.ExtractedText,
+		arg.Active,
+		arg.CreatedBy,
+		arg.CreatedAt,
+		arg.LastModifiedBy,
+		arg.LastModifiedAt,
+	)
+	return err
 }
 
 const updateUserPreferences = `-- name: UpdateUserPreferences :exec
