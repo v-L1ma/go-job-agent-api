@@ -25,7 +25,7 @@ var client *genai.Client
 func init() {
 	var err error
 	client, err = genai.NewClient(context.Background(), &genai.ClientConfig{
-		APIKey:  "",
+		APIKey:  "AIzaSyA4SGWtbZutBCS1aG8h-5hqZmf6q6V9-fI",
 		Backend: genai.BackendGeminiAPI,
 	})
 
