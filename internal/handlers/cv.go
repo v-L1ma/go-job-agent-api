@@ -421,3 +421,40 @@ func GenerateCv(c *echo.Context, db *database.Database) error {
 		pdfBytes,
 	)
 }
+
+func GetUserCv(c *echo.Context, db *database.Database) error{
+	id := c.Param("userId")
+
+	var userId pgtype.UUID
+	if err := userId.Scan(id); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+	
+	userCv, err := db.Query.GetUserCv(c.Request().Context(), userId)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "O curriculo do usuario informado não foi encontrado"})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	var cvData dto.GeneratedCv
+
+	err = json.Unmarshal([]byte(userCv.ExtractedText), &cvData)
+	if err != nil {
+		panic(err)
+	}
+
+	pdfBytes, err := services.GeneratePDF(cvData)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": "Erro ao gerar curriculo: " + err.Error(),
+		})
+	}
+
+	return c.Blob(
+		http.StatusOK,
+		"application/pdf",
+		pdfBytes,
+	)
+}

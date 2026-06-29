@@ -40,15 +40,19 @@ func RegisterRoutes(e *echo.Echo, db *database.Database) {
 		return handlers.SetUserPreferences(c, db)
 	})
 
-	e.GET("users/preferences/:userId", func (c *echo.Context) error{
+	e.GET("/users/preferences/:userId", func (c *echo.Context) error{
 		return handlers.GetUserPreferences(c, db)
 	})
 
-	e.POST("users/cv/:userId", func (c *echo.Context) error{
+	e.POST("/users/cv/:userId", func (c *echo.Context) error{
 		return handlers.UploadCv(c, db)
 	})
 
-	e.POST("jobs/:jobId/user/:userId", func (c *echo.Context) error{
+	e.POST("/jobs/:jobId/user/:userId", func (c *echo.Context) error{
 		return handlers.GenerateCv(c, db)
+	})
+
+	e.GET("/users/cv/:userId", func (c *echo.Context) error{
+		return handlers.GetUserCv(c, db)
 	})
 }
