@@ -47,4 +47,8 @@ func RegisterRoutes(e *echo.Echo, db *database.Database) {
 	e.POST("users/cv/:userId", func (c *echo.Context) error{
 		return handlers.UploadCv(c, db)
 	})
+
+	e.POST("jobs/:jobId/user/:userId", func (c *echo.Context) error{
+		return handlers.GenerateCv(c, db)
+	})
 }
