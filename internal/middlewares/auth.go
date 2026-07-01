@@ -44,7 +44,7 @@ func JWTMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 
 		claims, ok := token.Claims.(*services.Claims)
 
-		if claims.ExpiresAt.Time.Compare(time.Now()) == 1  {
+		if time.Now().Compare(claims.ExpiresAt.Time) == 1  {
 			return echo.NewHTTPError(
 				http.StatusUnauthorized,
 				"Token expirado.",

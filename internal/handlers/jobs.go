@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"job-agent-api/internal/database"
 	"job-agent-api/internal/database/sqlc"
+	"job-agent-api/internal/services"
 	"net/http"
 	"time"
 
@@ -12,9 +13,9 @@ import (
 )
 
 func GetJobs(c *echo.Context, db *database.Database) error {
-	id := c.Param("userId")
+	claims := c.Get("user").(*services.Claims)
 	var userID pgtype.UUID
-	if err := userID.Scan(id); err != nil {
+	if err := userID.Scan(claims.UserID); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 

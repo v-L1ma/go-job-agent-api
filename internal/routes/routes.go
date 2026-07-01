@@ -51,7 +51,7 @@ func RegisterRoutes(e *echo.Echo, db *database.Database) {
 	private := api.Group("")
 	private.Use(middlewares.JWTMiddleware)
 
-	private.GET("/jobs/me/:userId", func(c *echo.Context) error {
+	private.GET("/jobs", func(c *echo.Context) error {
 		return handlers.GetJobs(c, db)
 	})
 
@@ -63,23 +63,23 @@ func RegisterRoutes(e *echo.Echo, db *database.Database) {
 		return handlers.RateJob(c, db)
 	})
 
-	private.POST("/users/preferences/:userId",func (c *echo.Context) error{
+	private.POST("/users/preferences",func (c *echo.Context) error{
 		return handlers.SetUserPreferences(c, db)
 	})
 
-	private.GET("/users/preferences/:userId", func (c *echo.Context) error{
+	private.GET("/users/preferences", func (c *echo.Context) error{
 		return handlers.GetUserPreferences(c, db)
 	})
 
-	private.POST("/users/cv/:userId", func (c *echo.Context) error{
+	private.POST("/users/cv", func (c *echo.Context) error{
 		return handlers.UploadCv(c, db)
 	})
 
-	private.POST("/jobs/:jobId/user/:userId", func (c *echo.Context) error{
+	private.POST("/jobs/:jobId/cv", func (c *echo.Context) error{
 		return handlers.GenerateCv(c, db)
 	})
 
-	private.GET("/users/cv/:userId", func (c *echo.Context) error{
+	private.GET("/users/cv", func (c *echo.Context) error{
 		return handlers.GetUserCv(c, db)
 	})
 }

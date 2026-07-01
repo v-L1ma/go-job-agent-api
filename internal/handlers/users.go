@@ -4,6 +4,7 @@ import (
 	"job-agent-api/internal/database"
 	"job-agent-api/internal/database/sqlc"
 	"job-agent-api/internal/dto"
+	"job-agent-api/internal/services"
 	"net/http"
 	"time"
 
@@ -17,7 +18,7 @@ type SetUserPreferencesRequest struct {
 }
 
 func SetUserPreferences(c *echo.Context, db *database.Database) error {
-	id := c.Param("userId")
+	id := c.Get("user").(*services.Claims)
 	
 	var cvId pgtype.UUID
 	if err := cvId.Scan(id); err != nil {
@@ -89,9 +90,9 @@ func SetUserPreferences(c *echo.Context, db *database.Database) error {
 }
 
 func GetUserPreferences(c *echo.Context, db *database.Database) error{
-	id := c.Param("userId")
+	claims := c.Get("user").(*services.Claims)
 	var userID pgtype.UUID
-	err := userID.Scan(id); if err != nil {
+	err := userID.Scan(claims.UserID); if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 

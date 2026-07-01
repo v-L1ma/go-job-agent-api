@@ -99,9 +99,9 @@ func evaluateCV(c *echo.Context, db *database.Database) error {
 }
 
 func UploadCv(c *echo.Context, db *database.Database) error {
-	id := c.Param("userId")
+	claims := c.Get("user").(*services.Claims)
 	var userId pgtype.UUID
-	if err := userId.Scan(id); err != nil {
+	if err := userId.Scan(claims.UserID); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
@@ -292,9 +292,9 @@ func GenerateCv(c *echo.Context, db *database.Database) error {
 
 	var sb strings.Builder
 
-	idUser := c.Param("userId")
+	claims := c.Get("user").(*services.Claims)
 	var userId pgtype.UUID
-	if err := userId.Scan(idUser); err != nil {
+	if err := userId.Scan(claims.UserID); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
@@ -423,10 +423,10 @@ func GenerateCv(c *echo.Context, db *database.Database) error {
 }
 
 func GetUserCv(c *echo.Context, db *database.Database) error{
-	id := c.Param("userId")
+	claims := c.Get("user").(*services.Claims)
 
 	var userId pgtype.UUID
-	if err := userId.Scan(id); err != nil {
+	if err := userId.Scan(claims.UserID); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 	
