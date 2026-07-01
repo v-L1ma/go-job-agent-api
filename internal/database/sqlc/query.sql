@@ -125,3 +125,67 @@ WHERE "UserId" = $1;
 -- name: SaveGeneratedCV :exec
 INSERT INTO "GeneratedCvsNew" ("UserId", "JobId", "FileName", "ExtractedText", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt") 
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);
+
+-- name: UpdateUser :exec
+UPDATE "AspNetUsers"
+SET "Name" = $2, "CPF" = $3, "Email" = $4
+WHERE "Id" = $1;
+
+-- name: UpdateUserPassword :exec
+UPDATE "AspNetUsers"
+SET "PasswordHash" = $2
+WHERE "Id" = $1;
+
+-- name: GetUserJobStats :one
+SELECT
+    COUNT(*)::int AS total,
+    COUNT(*) FILTER (WHERE j."IsApplied" = true)::int AS applied,
+    COUNT(*) FILTER (WHERE j."IsApplied" = false)::int AS skipped
+FROM "Jobs" j
+WHERE EXISTS (
+    SELECT 1 FROM "UserSearchQueries" usq
+    JOIN "SearchQueries" sq ON sq."Id" = usq."SearchQueryId"
+    CROSS JOIN LATERAL unnest(sq."Keywords") AS keyword
+    WHERE usq."UserId" = $1
+    AND j."Title" ILIKE '%' || keyword || '%'
+);
+
+-- name: GetPrevMonthJobCount :one
+SELECT COUNT(*)::int AS count
+FROM "Jobs" j
+WHERE EXISTS (
+    SELECT 1 FROM "UserSearchQueries" usq
+    JOIN "SearchQueries" sq ON sq."Id" = usq."SearchQueryId"
+    CROSS JOIN LATERAL unnest(sq."Keywords") AS keyword
+    WHERE usq."UserId" = $1
+    AND j."Title" ILIKE '%' || keyword || '%'
+)
+AND j."CreatedAt" >= date_trunc('month', CURRENT_DATE - INTERVAL '1 month')
+AND j."CreatedAt" < date_trunc('month', CURRENT_DATE);
+
+-- name: GetApplicationsPerDay :many
+SELECT j."CreatedAt"::date AS date, COUNT(*)::int AS count
+FROM "Jobs" j
+WHERE EXISTS (
+    SELECT 1 FROM "UserSearchQueries" usq
+    JOIN "SearchQueries" sq ON sq."Id" = usq."SearchQueryId"
+    CROSS JOIN LATERAL unnest(sq."Keywords") AS keyword
+    WHERE usq."UserId" = $1
+    AND j."Title" ILIKE '%' || keyword || '%'
+)
+AND j."CreatedAt" >= CURRENT_DATE - INTERVAL '6 days'
+GROUP BY j."CreatedAt"::date
+ORDER BY j."CreatedAt"::date;
+
+-- name: GetPlatformDistribution :many
+SELECT j."Platform" AS platform, COUNT(*)::int AS count
+FROM "Jobs" j
+WHERE EXISTS (
+    SELECT 1 FROM "UserSearchQueries" usq
+    JOIN "SearchQueries" sq ON sq."Id" = usq."SearchQueryId"
+    CROSS JOIN LATERAL unnest(sq."Keywords") AS keyword
+    WHERE usq."UserId" = $1
+    AND j."Title" ILIKE '%' || keyword || '%'
+)
+GROUP BY j."Platform"
+ORDER BY COUNT(*) DESC;

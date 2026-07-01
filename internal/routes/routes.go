@@ -90,4 +90,20 @@ func RegisterRoutes(e *echo.Echo, db *database.Database) {
 	private.GET("/users/cv/generated", func (c *echo.Context) error{
 		return handlers.GetGeneratedCvs(c, db)
 	})
+
+	private.GET("/users/profile", func(c *echo.Context) error {
+		return handlers.GetUserProfile(c, db)
+	})
+
+	private.PUT("/users/profile", func(c *echo.Context) error {
+		return handlers.UpdateProfile(c, db)
+	})
+
+	private.PUT("/users/change-password", func(c *echo.Context) error {
+		return handlers.ChangePassword(c, db)
+	})
+
+	private.GET("/users/statistics", func(c *echo.Context) error {
+		return handlers.GetUserStatistics(c, db)
+	})
 }

@@ -224,6 +224,46 @@ func (q *Queries) FindUserPreferences(ctx context.Context, userid pgtype.UUID) (
 	return exists, err
 }
 
+const getApplicationsPerDay = `-- name: GetApplicationsPerDay :many
+SELECT j."CreatedAt"::date AS date, COUNT(*)::int AS count
+FROM "Jobs" j
+WHERE EXISTS (
+    SELECT 1 FROM "UserSearchQueries" usq
+    JOIN "SearchQueries" sq ON sq."Id" = usq."SearchQueryId"
+    CROSS JOIN LATERAL unnest(sq."Keywords") AS keyword
+    WHERE usq."UserId" = $1
+    AND j."Title" ILIKE '%' || keyword || '%'
+)
+AND j."CreatedAt" >= CURRENT_DATE - INTERVAL '6 days'
+GROUP BY j."CreatedAt"::date
+ORDER BY j."CreatedAt"::date
+`
+
+type GetApplicationsPerDayRow struct {
+	Date  pgtype.Date `db:"date" json:"date"`
+	Count int32       `db:"count" json:"count"`
+}
+
+func (q *Queries) GetApplicationsPerDay(ctx context.Context, userid pgtype.UUID) ([]GetApplicationsPerDayRow, error) {
+	rows, err := q.db.Query(ctx, getApplicationsPerDay, userid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetApplicationsPerDayRow
+	for rows.Next() {
+		var i GetApplicationsPerDayRow
+		if err := rows.Scan(&i.Date, &i.Count); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getGeneratedCvById = `-- name: GetGeneratedCvById :one
 SELECT "UserId", "JobId", "FileName", "ExtractedText"
 FROM "GeneratedCvsNew" WHERE "Id" = $1
@@ -381,6 +421,66 @@ func (q *Queries) GetJobs(ctx context.Context, userid pgtype.UUID) ([]Job, error
 	return items, nil
 }
 
+const getPlatformDistribution = `-- name: GetPlatformDistribution :many
+SELECT j."Platform" AS platform, COUNT(*)::int AS count
+FROM "Jobs" j
+WHERE EXISTS (
+    SELECT 1 FROM "UserSearchQueries" usq
+    JOIN "SearchQueries" sq ON sq."Id" = usq."SearchQueryId"
+    CROSS JOIN LATERAL unnest(sq."Keywords") AS keyword
+    WHERE usq."UserId" = $1
+    AND j."Title" ILIKE '%' || keyword || '%'
+)
+GROUP BY j."Platform"
+ORDER BY COUNT(*) DESC
+`
+
+type GetPlatformDistributionRow struct {
+	Platform string `db:"platform" json:"platform"`
+	Count    int32  `db:"count" json:"count"`
+}
+
+func (q *Queries) GetPlatformDistribution(ctx context.Context, userid pgtype.UUID) ([]GetPlatformDistributionRow, error) {
+	rows, err := q.db.Query(ctx, getPlatformDistribution, userid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetPlatformDistributionRow
+	for rows.Next() {
+		var i GetPlatformDistributionRow
+		if err := rows.Scan(&i.Platform, &i.Count); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getPrevMonthJobCount = `-- name: GetPrevMonthJobCount :one
+SELECT COUNT(*)::int AS count
+FROM "Jobs" j
+WHERE EXISTS (
+    SELECT 1 FROM "UserSearchQueries" usq
+    JOIN "SearchQueries" sq ON sq."Id" = usq."SearchQueryId"
+    CROSS JOIN LATERAL unnest(sq."Keywords") AS keyword
+    WHERE usq."UserId" = $1
+    AND j."Title" ILIKE '%' || keyword || '%'
+)
+AND j."CreatedAt" >= date_trunc('month', CURRENT_DATE - INTERVAL '1 month')
+AND j."CreatedAt" < date_trunc('month', CURRENT_DATE)
+`
+
+func (q *Queries) GetPrevMonthJobCount(ctx context.Context, userid pgtype.UUID) (int32, error) {
+	row := q.db.QueryRow(ctx, getPrevMonthJobCount, userid)
+	var count int32
+	err := row.Scan(&count)
+	return count, err
+}
+
 const getUserByEmail = `-- name: GetUserByEmail :one
 SELECT "Id", "Name", "CPF", "Email", "PasswordHash", "AccessFailedCount", "OnboardingCompleted", "LockoutEnd", "LockoutEnabled", "TwoFactorEnabled", "EmailConfirmed", "PhoneNumberConfirmed" 
 FROM public."AspNetUsers"
@@ -469,6 +569,34 @@ func (q *Queries) GetUserCv(ctx context.Context, userid pgtype.UUID) (GetUserCvR
 		&i.LastModifiedBy,
 		&i.LastModifiedAt,
 	)
+	return i, err
+}
+
+const getUserJobStats = `-- name: GetUserJobStats :one
+SELECT
+    COUNT(*)::int AS total,
+    COUNT(*) FILTER (WHERE j."IsApplied" = true)::int AS applied,
+    COUNT(*) FILTER (WHERE j."IsApplied" = false)::int AS skipped
+FROM "Jobs" j
+WHERE EXISTS (
+    SELECT 1 FROM "UserSearchQueries" usq
+    JOIN "SearchQueries" sq ON sq."Id" = usq."SearchQueryId"
+    CROSS JOIN LATERAL unnest(sq."Keywords") AS keyword
+    WHERE usq."UserId" = $1
+    AND j."Title" ILIKE '%' || keyword || '%'
+)
+`
+
+type GetUserJobStatsRow struct {
+	Total   int32 `db:"total" json:"total"`
+	Applied int32 `db:"applied" json:"applied"`
+	Skipped int32 `db:"skipped" json:"skipped"`
+}
+
+func (q *Queries) GetUserJobStats(ctx context.Context, userid pgtype.UUID) (GetUserJobStatsRow, error) {
+	row := q.db.QueryRow(ctx, getUserJobStats, userid)
+	var i GetUserJobStatsRow
+	err := row.Scan(&i.Total, &i.Applied, &i.Skipped)
 	return i, err
 }
 
@@ -565,6 +693,45 @@ func (q *Queries) SaveUserCv(ctx context.Context, arg SaveUserCvParams) error {
 		arg.LastModifiedBy,
 		arg.LastModifiedAt,
 	)
+	return err
+}
+
+const updateUser = `-- name: UpdateUser :exec
+UPDATE "AspNetUsers"
+SET "Name" = $2, "CPF" = $3, "Email" = $4
+WHERE "Id" = $1
+`
+
+type UpdateUserParams struct {
+	Id    pgtype.UUID `db:"Id" json:"Id"`
+	Name  string      `db:"Name" json:"Name"`
+	CPF   string      `db:"CPF" json:"CPF"`
+	Email pgtype.Text `db:"Email" json:"Email"`
+}
+
+func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) error {
+	_, err := q.db.Exec(ctx, updateUser,
+		arg.Id,
+		arg.Name,
+		arg.CPF,
+		arg.Email,
+	)
+	return err
+}
+
+const updateUserPassword = `-- name: UpdateUserPassword :exec
+UPDATE "AspNetUsers"
+SET "PasswordHash" = $2
+WHERE "Id" = $1
+`
+
+type UpdateUserPasswordParams struct {
+	Id           pgtype.UUID `db:"Id" json:"Id"`
+	PasswordHash pgtype.Text `db:"PasswordHash" json:"PasswordHash"`
+}
+
+func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error {
+	_, err := q.db.Exec(ctx, updateUserPassword, arg.Id, arg.PasswordHash)
 	return err
 }
 
