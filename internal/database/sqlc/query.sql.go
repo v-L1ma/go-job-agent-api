@@ -11,6 +11,40 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const createUser = `-- name: CreateUser :exec
+INSERT INTO "AspNetUsers" ("Name", "CPF", "Email", "PasswordHash", "AccessFailedCount", "OnboardingCompleted", "TwoFactorEnabled", "EmailConfirmed", "PhoneNumberConfirmed", "LockoutEnabled")
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+`
+
+type CreateUserParams struct {
+	Name                 string      `db:"Name" json:"Name"`
+	CPF                  string      `db:"CPF" json:"CPF"`
+	Email                pgtype.Text `db:"Email" json:"Email"`
+	PasswordHash         pgtype.Text `db:"PasswordHash" json:"PasswordHash"`
+	AccessFailedCount    int32       `db:"AccessFailedCount" json:"AccessFailedCount"`
+	OnboardingCompleted  bool        `db:"OnboardingCompleted" json:"OnboardingCompleted"`
+	TwoFactorEnabled     bool        `db:"TwoFactorEnabled" json:"TwoFactorEnabled"`
+	EmailConfirmed       bool        `db:"EmailConfirmed" json:"EmailConfirmed"`
+	PhoneNumberConfirmed bool        `db:"PhoneNumberConfirmed" json:"PhoneNumberConfirmed"`
+	LockoutEnabled       bool        `db:"LockoutEnabled" json:"LockoutEnabled"`
+}
+
+func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) error {
+	_, err := q.db.Exec(ctx, createUser,
+		arg.Name,
+		arg.CPF,
+		arg.Email,
+		arg.PasswordHash,
+		arg.AccessFailedCount,
+		arg.OnboardingCompleted,
+		arg.TwoFactorEnabled,
+		arg.EmailConfirmed,
+		arg.PhoneNumberConfirmed,
+		arg.LockoutEnabled,
+	)
+	return err
+}
+
 const createUserPreferences = `-- name: CreateUserPreferences :exec
 INSERT INTO "UserPreferences" ("UserId", "Skills", "Levels", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt") 
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -145,6 +179,21 @@ func (q *Queries) ExistsJobEvaluation(ctx context.Context, arg ExistsJobEvaluati
 	return exists, err
 }
 
+const existsUserByEmail = `-- name: ExistsUserByEmail :one
+SELECT EXISTS (
+    SELECT 1
+    FROM "AspNetUsers"
+    WHERE "Email" = $1
+) AS "exists"
+`
+
+func (q *Queries) ExistsUserByEmail(ctx context.Context, email pgtype.Text) (bool, error) {
+	row := q.db.QueryRow(ctx, existsUserByEmail, email)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const existsUserById = `-- name: ExistsUserById :one
 SELECT EXISTS (
     SELECT 1
@@ -267,8 +316,34 @@ func (q *Queries) GetJobs(ctx context.Context, userid pgtype.UUID) ([]Job, error
 	return items, nil
 }
 
+const getUserByEmail = `-- name: GetUserByEmail :one
+SELECT "Id", "Name", "CPF", "Email", "PasswordHash", "AccessFailedCount", "OnboardingCompleted", "LockoutEnd", "LockoutEnabled", "TwoFactorEnabled", "EmailConfirmed", "PhoneNumberConfirmed" 
+FROM public."AspNetUsers"
+WHERE "Email" = $1
+`
+
+func (q *Queries) GetUserByEmail(ctx context.Context, email pgtype.Text) (AspNetUser, error) {
+	row := q.db.QueryRow(ctx, getUserByEmail, email)
+	var i AspNetUser
+	err := row.Scan(
+		&i.Id,
+		&i.Name,
+		&i.CPF,
+		&i.Email,
+		&i.PasswordHash,
+		&i.AccessFailedCount,
+		&i.OnboardingCompleted,
+		&i.LockoutEnd,
+		&i.LockoutEnabled,
+		&i.TwoFactorEnabled,
+		&i.EmailConfirmed,
+		&i.PhoneNumberConfirmed,
+	)
+	return i, err
+}
+
 const getUserById = `-- name: GetUserById :one
-SELECT "Id", "Name", "Cpf", "Email", "PasswordHash", "AccessFailedCount", "OnboardingCompleted"
+SELECT "Id", "Name", "CPF", "Email", "PasswordHash", "AccessFailedCount", "OnboardingCompleted", "LockoutEnd", "LockoutEnabled", "TwoFactorEnabled", "EmailConfirmed", "PhoneNumberConfirmed" 
 FROM public."AspNetUsers"
 WHERE "Id" = $1
 `
@@ -279,11 +354,16 @@ func (q *Queries) GetUserById(ctx context.Context, id pgtype.UUID) (AspNetUser, 
 	err := row.Scan(
 		&i.Id,
 		&i.Name,
-		&i.Cpf,
+		&i.CPF,
 		&i.Email,
 		&i.PasswordHash,
 		&i.AccessFailedCount,
 		&i.OnboardingCompleted,
+		&i.LockoutEnd,
+		&i.LockoutEnabled,
+		&i.TwoFactorEnabled,
+		&i.EmailConfirmed,
+		&i.PhoneNumberConfirmed,
 	)
 	return i, err
 }

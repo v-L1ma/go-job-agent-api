@@ -1,12 +1,22 @@
 package routes
 
 import (
-
 	"job-agent-api/internal/database"
+	"job-agent-api/internal/middlewares"
 
-	"github.com/labstack/echo/v5"
 	"job-agent-api/internal/handlers"
+
+	"github.com/go-playground/validator/v10"
+	"github.com/labstack/echo/v5"
 )
+
+type CustomValidator struct {
+    validator *validator.Validate
+}
+
+func (cv *CustomValidator) Validate(i interface{}) error {
+    return cv.validator.Struct(i)
+}
 
 func RegisterRoutes(e *echo.Echo, db *database.Database) {
 	// e.GET("/", func(c *echo.Context) error {
@@ -24,35 +34,52 @@ func RegisterRoutes(e *echo.Echo, db *database.Database) {
 	// 	return c.JSON(http.StatusOK, authors)
 	// })
 
-	e.GET("/jobs/me/:userId", func(c *echo.Context) error {
+	e.Validator = &CustomValidator{
+		validator: validator.New(),
+	}
+
+	api := e.Group("/api/v1")
+
+	api.POST("/login", func(c *echo.Context) error {
+		return handlers.Login(c, db)
+	})
+
+	api.POST("/register", func(c *echo.Context) error {
+		return handlers.Register(c, db)
+	})
+
+	private := api.Group("")
+	private.Use(middlewares.JWTMiddleware)
+
+	private.GET("/jobs/me/:userId", func(c *echo.Context) error {
 		return handlers.GetJobs(c, db)
 	})
 
-	e.GET("/jobs/:jobId", func(c *echo.Context) error{
+	private.GET("/jobs/:jobId", func(c *echo.Context) error{
 		return handlers.GetJobById(c, db)
 	})
 
-	e.POST("/jobs/:jobId/rate", func (c *echo.Context) error{
+	private.POST("/jobs/:jobId/rate", func (c *echo.Context) error{
 		return handlers.RateJob(c, db)
 	})
 
-	e.POST("/users/preferences/:userId",func (c *echo.Context) error{
+	private.POST("/users/preferences/:userId",func (c *echo.Context) error{
 		return handlers.SetUserPreferences(c, db)
 	})
 
-	e.GET("/users/preferences/:userId", func (c *echo.Context) error{
+	private.GET("/users/preferences/:userId", func (c *echo.Context) error{
 		return handlers.GetUserPreferences(c, db)
 	})
 
-	e.POST("/users/cv/:userId", func (c *echo.Context) error{
+	private.POST("/users/cv/:userId", func (c *echo.Context) error{
 		return handlers.UploadCv(c, db)
 	})
 
-	e.POST("/jobs/:jobId/user/:userId", func (c *echo.Context) error{
+	private.POST("/jobs/:jobId/user/:userId", func (c *echo.Context) error{
 		return handlers.GenerateCv(c, db)
 	})
 
-	e.GET("/users/cv/:userId", func (c *echo.Context) error{
+	private.GET("/users/cv/:userId", func (c *echo.Context) error{
 		return handlers.GetUserCv(c, db)
 	})
 }

@@ -83,13 +83,18 @@ CREATE TABLE IF NOT EXISTS public."GeneratedCvs" (
 );
 
 CREATE TABLE IF NOT EXISTS public."AspNetUsers" (
-  "Id" uuid not null,
+  "Id" uuid not null default gen_random_uuid(),
   "Name" text not null,
-  "Cpf" text not null,
+  "CPF" text not null,
   "Email" character varying(256) null,
   "PasswordHash" text null,
   "AccessFailedCount" integer not null,
   "OnboardingCompleted" boolean not null default false,
+  "LockoutEnd" timestamp with time zone null,
+  "LockoutEnabled" boolean not null,
+  "TwoFactorEnabled" boolean not null,
+  "EmailConfirmed" boolean not null,
+  "PhoneNumberConfirmed" boolean not null,
   constraint PK_AspNetUsers primary key ("Id") 
 );
 

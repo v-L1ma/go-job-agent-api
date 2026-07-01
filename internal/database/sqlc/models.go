@@ -9,13 +9,18 @@ import (
 )
 
 type AspNetUser struct {
-	Id                  pgtype.UUID `db:"Id" json:"Id"`
-	Name                string      `db:"Name" json:"Name"`
-	Cpf                 string      `db:"Cpf" json:"Cpf"`
-	Email               pgtype.Text `db:"Email" json:"Email"`
-	PasswordHash        pgtype.Text `db:"PasswordHash" json:"PasswordHash"`
-	AccessFailedCount   int32       `db:"AccessFailedCount" json:"AccessFailedCount"`
-	OnboardingCompleted bool        `db:"OnboardingCompleted" json:"OnboardingCompleted"`
+	Id                   pgtype.UUID        `db:"Id" json:"Id"`
+	Name                 string             `db:"Name" json:"Name"`
+	CPF                  string             `db:"CPF" json:"CPF"`
+	Email                pgtype.Text        `db:"Email" json:"Email"`
+	PasswordHash         pgtype.Text        `db:"PasswordHash" json:"PasswordHash"`
+	AccessFailedCount    int32              `db:"AccessFailedCount" json:"AccessFailedCount"`
+	OnboardingCompleted  bool               `db:"OnboardingCompleted" json:"OnboardingCompleted"`
+	LockoutEnd           pgtype.Timestamptz `db:"LockoutEnd" json:"LockoutEnd"`
+	LockoutEnabled       bool               `db:"LockoutEnabled" json:"LockoutEnabled"`
+	TwoFactorEnabled     bool               `db:"TwoFactorEnabled" json:"TwoFactorEnabled"`
+	EmailConfirmed       bool               `db:"EmailConfirmed" json:"EmailConfirmed"`
+	PhoneNumberConfirmed bool               `db:"PhoneNumberConfirmed" json:"PhoneNumberConfirmed"`
 }
 
 type CvEvaluation struct {
