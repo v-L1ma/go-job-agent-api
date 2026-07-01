@@ -19,10 +19,10 @@ type SetUserPreferencesRequest struct {
 }
 
 func SetUserPreferences(c *echo.Context, db *database.Database) error {
-	id := c.Get("user").(*services.Claims)
+	claims := c.Get("user").(*services.Claims)
 	
 	var cvId pgtype.UUID
-	if err := cvId.Scan(id); err != nil {
+	if err := cvId.Scan(claims.UserID); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
@@ -32,7 +32,7 @@ func SetUserPreferences(c *echo.Context, db *database.Database) error {
 	}
 
 	var userID pgtype.UUID
-	if err := userID.Scan(id); err != nil {
+	if err := userID.Scan(claims.UserID); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 

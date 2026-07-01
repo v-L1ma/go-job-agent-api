@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"job-agent-api/internal/database"
 	"job-agent-api/internal/routes"
+	"net/http"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
@@ -40,6 +42,13 @@ func main() {
 
 	e.Use(middleware.RequestLogger())
 	e.Use(middleware.Recover())
+
+	corsOrigins := getEnv("CORS_ORIGINS", "http://localhost:3000")
+	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+		AllowOrigins: strings.Split(corsOrigins, ","),
+		AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodOptions},
+		AllowHeaders: []string{"Content-Type", "Authorization"},
+	}))
 
 	routes.RegisterRoutes(e, DB)
 

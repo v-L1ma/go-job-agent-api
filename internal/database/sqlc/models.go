@@ -90,6 +90,15 @@ type JobEvaluation struct {
 	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
 }
 
+type PasswordResetToken struct {
+	Id        pgtype.UUID        `db:"Id" json:"Id"`
+	Email     string             `db:"Email" json:"Email"`
+	TokenHash string             `db:"TokenHash" json:"TokenHash"`
+	ExpiresAt pgtype.Timestamptz `db:"ExpiresAt" json:"ExpiresAt"`
+	Used      bool               `db:"Used" json:"Used"`
+	CreatedAt pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+}
+
 type SearchQuery struct {
 	Id             pgtype.UUID        `db:"Id" json:"Id"`
 	Query          string             `db:"Query" json:"Query"`

@@ -1,6 +1,9 @@
 package services
 
 import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"job-agent-api/internal/database/sqlc"
 	"os"
 	"time"
@@ -46,10 +49,36 @@ func GenerateToken(user sqlc.AspNetUser) (string, error) {
         },
     }
 
+    return signClaims(claims)
+}
+
+func GenerateTokenFromClaims(claims *Claims) (string, error) {
+    claims.ExpiresAt = jwt.NewNumericDate(
+        time.Now().Add(15 * time.Hour),
+    )
+    claims.IssuedAt = jwt.NewNumericDate(time.Now())
+
+    return signClaims(*claims)
+}
+
+func signClaims(claims Claims) (string, error) {
     token := jwt.NewWithClaims(
         jwt.SigningMethodHS256,
         claims,
     )
 
     return token.SignedString([]byte(os.Getenv("JWT_SECRET")))
+}
+
+func GenerateRandomToken(length int) (string, error) {
+    bytes := make([]byte, length)
+    if _, err := rand.Read(bytes); err != nil {
+        return "", err
+    }
+    return hex.EncodeToString(bytes), nil
+}
+
+func HashToken(token string) string {
+    hash := sha256.Sum256([]byte(token))
+    return hex.EncodeToString(hash[:])
 }

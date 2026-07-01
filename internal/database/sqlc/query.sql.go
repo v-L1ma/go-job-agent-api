@@ -11,6 +11,22 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const createPasswordResetToken = `-- name: CreatePasswordResetToken :exec
+INSERT INTO "PasswordResetTokens" ("Email", "TokenHash", "ExpiresAt")
+VALUES ($1, $2, $3)
+`
+
+type CreatePasswordResetTokenParams struct {
+	Email     string             `db:"Email" json:"Email"`
+	TokenHash string             `db:"TokenHash" json:"TokenHash"`
+	ExpiresAt pgtype.Timestamptz `db:"ExpiresAt" json:"ExpiresAt"`
+}
+
+func (q *Queries) CreatePasswordResetToken(ctx context.Context, arg CreatePasswordResetTokenParams) error {
+	_, err := q.db.Exec(ctx, createPasswordResetToken, arg.Email, arg.TokenHash, arg.ExpiresAt)
+	return err
+}
+
 const createUser = `-- name: CreateUser :exec
 INSERT INTO "AspNetUsers" ("Name", "CPF", "Email", "PasswordHash", "AccessFailedCount", "OnboardingCompleted", "TwoFactorEnabled", "EmailConfirmed", "PhoneNumberConfirmed", "LockoutEnabled")
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -421,6 +437,27 @@ func (q *Queries) GetJobs(ctx context.Context, userid pgtype.UUID) ([]Job, error
 	return items, nil
 }
 
+const getPasswordResetTokenByHash = `-- name: GetPasswordResetTokenByHash :one
+SELECT "Id", "Email", "TokenHash", "ExpiresAt", "Used", "CreatedAt"
+FROM "PasswordResetTokens"
+WHERE "TokenHash" = $1 AND "Used" = false AND "ExpiresAt" > now()
+LIMIT 1
+`
+
+func (q *Queries) GetPasswordResetTokenByHash(ctx context.Context, tokenhash string) (PasswordResetToken, error) {
+	row := q.db.QueryRow(ctx, getPasswordResetTokenByHash, tokenhash)
+	var i PasswordResetToken
+	err := row.Scan(
+		&i.Id,
+		&i.Email,
+		&i.TokenHash,
+		&i.ExpiresAt,
+		&i.Used,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getPlatformDistribution = `-- name: GetPlatformDistribution :many
 SELECT j."Platform" AS platform, COUNT(*)::int AS count
 FROM "Jobs" j
@@ -634,6 +671,15 @@ func (q *Queries) GetUserPreferences(ctx context.Context, userid pgtype.UUID) ([
 	return items, nil
 }
 
+const markResetTokenAsUsed = `-- name: MarkResetTokenAsUsed :exec
+UPDATE "PasswordResetTokens" SET "Used" = true WHERE "Id" = $1
+`
+
+func (q *Queries) MarkResetTokenAsUsed(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, markResetTokenAsUsed, id)
+	return err
+}
+
 const saveGeneratedCV = `-- name: SaveGeneratedCV :exec
 INSERT INTO "GeneratedCvsNew" ("UserId", "JobId", "FileName", "ExtractedText", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt") 
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -732,6 +778,20 @@ type UpdateUserPasswordParams struct {
 
 func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error {
 	_, err := q.db.Exec(ctx, updateUserPassword, arg.Id, arg.PasswordHash)
+	return err
+}
+
+const updateUserPasswordByEmail = `-- name: UpdateUserPasswordByEmail :exec
+UPDATE "AspNetUsers" SET "PasswordHash" = $2 WHERE "Email" = $1
+`
+
+type UpdateUserPasswordByEmailParams struct {
+	Email        pgtype.Text `db:"Email" json:"Email"`
+	PasswordHash pgtype.Text `db:"PasswordHash" json:"PasswordHash"`
+}
+
+func (q *Queries) UpdateUserPasswordByEmail(ctx context.Context, arg UpdateUserPasswordByEmailParams) error {
+	_, err := q.db.Exec(ctx, updateUserPasswordByEmail, arg.Email, arg.PasswordHash)
 	return err
 }
 

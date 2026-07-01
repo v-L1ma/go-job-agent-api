@@ -189,3 +189,19 @@ WHERE EXISTS (
 )
 GROUP BY j."Platform"
 ORDER BY COUNT(*) DESC;
+
+-- name: CreatePasswordResetToken :exec
+INSERT INTO "PasswordResetTokens" ("Email", "TokenHash", "ExpiresAt")
+VALUES ($1, $2, $3);
+
+-- name: GetPasswordResetTokenByHash :one
+SELECT "Id", "Email", "TokenHash", "ExpiresAt", "Used", "CreatedAt"
+FROM "PasswordResetTokens"
+WHERE "TokenHash" = $1 AND "Used" = false AND "ExpiresAt" > now()
+LIMIT 1;
+
+-- name: MarkResetTokenAsUsed :exec
+UPDATE "PasswordResetTokens" SET "Used" = true WHERE "Id" = $1;
+
+-- name: UpdateUserPasswordByEmail :exec
+UPDATE "AspNetUsers" SET "PasswordHash" = $2 WHERE "Email" = $1;

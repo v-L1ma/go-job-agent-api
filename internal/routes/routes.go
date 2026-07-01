@@ -48,6 +48,18 @@ func RegisterRoutes(e *echo.Echo, db *database.Database) {
 		return handlers.Register(c, db)
 	})
 
+	api.POST("/refresh-token", func(c *echo.Context) error {
+		return handlers.RefreshToken(c, db)
+	})
+
+	api.POST("/forgot-password", func(c *echo.Context) error {
+		return handlers.ForgotPassword(c, db)
+	})
+
+	api.POST("/reset-password", func(c *echo.Context) error {
+		return handlers.ResetPassword(c, db)
+	})
+
 	private := api.Group("")
 	private.Use(middlewares.JWTMiddleware)
 
