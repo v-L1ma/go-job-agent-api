@@ -111,3 +111,17 @@ SELECT "UserId",
 "LastModifiedBy", 
 "LastModifiedAt" 
 FROM "UserCvs" WHERE "UserId" = $1;
+
+-- name: GetGeneratedCvById :one
+SELECT "UserId", "JobId", "FileName", "ExtractedText"
+FROM "GeneratedCvsNew" WHERE "Id" = $1;
+
+-- name: GetGeneratedCvs :many
+SELECT "UserId", "JobId", j."Title", cv."FileName", "ExtractedText"
+FROM "GeneratedCvsNew" as cv
+LEFT JOIN "Jobs" as j ON cv."JobId" = j."Id" 
+WHERE "UserId" = $1;
+
+-- name: SaveGeneratedCV :exec
+INSERT INTO "GeneratedCvsNew" ("UserId", "JobId", "FileName", "ExtractedText", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt") 
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);

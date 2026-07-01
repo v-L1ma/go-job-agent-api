@@ -224,6 +224,71 @@ func (q *Queries) FindUserPreferences(ctx context.Context, userid pgtype.UUID) (
 	return exists, err
 }
 
+const getGeneratedCvById = `-- name: GetGeneratedCvById :one
+SELECT "UserId", "JobId", "FileName", "ExtractedText"
+FROM "GeneratedCvsNew" WHERE "Id" = $1
+`
+
+type GetGeneratedCvByIdRow struct {
+	UserId        pgtype.UUID `db:"UserId" json:"UserId"`
+	JobId         pgtype.UUID `db:"JobId" json:"JobId"`
+	FileName      string      `db:"FileName" json:"FileName"`
+	ExtractedText string      `db:"ExtractedText" json:"ExtractedText"`
+}
+
+func (q *Queries) GetGeneratedCvById(ctx context.Context, id pgtype.UUID) (GetGeneratedCvByIdRow, error) {
+	row := q.db.QueryRow(ctx, getGeneratedCvById, id)
+	var i GetGeneratedCvByIdRow
+	err := row.Scan(
+		&i.UserId,
+		&i.JobId,
+		&i.FileName,
+		&i.ExtractedText,
+	)
+	return i, err
+}
+
+const getGeneratedCvs = `-- name: GetGeneratedCvs :many
+SELECT "UserId", "JobId", j."Title", cv."FileName", "ExtractedText"
+FROM "GeneratedCvsNew" as cv
+LEFT JOIN "Jobs" as j ON cv."JobId" = j."Id" 
+WHERE "UserId" = $1
+`
+
+type GetGeneratedCvsRow struct {
+	UserId        pgtype.UUID `db:"UserId" json:"UserId"`
+	JobId         pgtype.UUID `db:"JobId" json:"JobId"`
+	Title         pgtype.Text `db:"Title" json:"Title"`
+	FileName      string      `db:"FileName" json:"FileName"`
+	ExtractedText string      `db:"ExtractedText" json:"ExtractedText"`
+}
+
+func (q *Queries) GetGeneratedCvs(ctx context.Context, userid pgtype.UUID) ([]GetGeneratedCvsRow, error) {
+	rows, err := q.db.Query(ctx, getGeneratedCvs, userid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetGeneratedCvsRow
+	for rows.Next() {
+		var i GetGeneratedCvsRow
+		if err := rows.Scan(
+			&i.UserId,
+			&i.JobId,
+			&i.Title,
+			&i.FileName,
+			&i.ExtractedText,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getJobById = `-- name: GetJobById :one
 SELECT "Id", 
     "Title", 
@@ -439,6 +504,38 @@ func (q *Queries) GetUserPreferences(ctx context.Context, userid pgtype.UUID) ([
 		return nil, err
 	}
 	return items, nil
+}
+
+const saveGeneratedCV = `-- name: SaveGeneratedCV :exec
+INSERT INTO "GeneratedCvsNew" ("UserId", "JobId", "FileName", "ExtractedText", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt") 
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+`
+
+type SaveGeneratedCVParams struct {
+	UserId         pgtype.UUID        `db:"UserId" json:"UserId"`
+	JobId          pgtype.UUID        `db:"JobId" json:"JobId"`
+	FileName       string             `db:"FileName" json:"FileName"`
+	ExtractedText  string             `db:"ExtractedText" json:"ExtractedText"`
+	Active         bool               `db:"Active" json:"Active"`
+	CreatedBy      string             `db:"CreatedBy" json:"CreatedBy"`
+	CreatedAt      pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+	LastModifiedBy string             `db:"LastModifiedBy" json:"LastModifiedBy"`
+	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
+}
+
+func (q *Queries) SaveGeneratedCV(ctx context.Context, arg SaveGeneratedCVParams) error {
+	_, err := q.db.Exec(ctx, saveGeneratedCV,
+		arg.UserId,
+		arg.JobId,
+		arg.FileName,
+		arg.ExtractedText,
+		arg.Active,
+		arg.CreatedBy,
+		arg.CreatedAt,
+		arg.LastModifiedBy,
+		arg.LastModifiedAt,
+	)
+	return err
 }
 
 const saveUserCv = `-- name: SaveUserCv :exec

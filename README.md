@@ -18,9 +18,9 @@ SavePreferences ===================== FEITO
 updateProfile
 uploadCv ===================== FEITO
 
-getGeneratedCvs
+getGeneratedCvs ===================== FEITO
 getPreferences ===================== FEITO
-getUserCV
+getUserCV ===================== FEITO
 getUserProfile
 getuserStatistics
 

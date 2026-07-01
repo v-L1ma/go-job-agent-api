@@ -47,6 +47,19 @@ type GeneratedCv struct {
 	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
 }
 
+type GeneratedCvsNew struct {
+	Id             pgtype.UUID        `db:"Id" json:"Id"`
+	UserId         pgtype.UUID        `db:"UserId" json:"UserId"`
+	JobId          pgtype.UUID        `db:"JobId" json:"JobId"`
+	FileName       string             `db:"FileName" json:"FileName"`
+	ExtractedText  string             `db:"ExtractedText" json:"ExtractedText"`
+	Active         bool               `db:"Active" json:"Active"`
+	CreatedBy      string             `db:"CreatedBy" json:"CreatedBy"`
+	CreatedAt      pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+	LastModifiedBy string             `db:"LastModifiedBy" json:"LastModifiedBy"`
+	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
+}
+
 type Job struct {
 	Id             pgtype.UUID        `db:"Id" json:"Id"`
 	PlataformJobId string             `db:"PlataformJobId" json:"PlataformJobId"`

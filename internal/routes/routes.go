@@ -82,4 +82,12 @@ func RegisterRoutes(e *echo.Echo, db *database.Database) {
 	private.GET("/users/cv", func (c *echo.Context) error{
 		return handlers.GetUserCv(c, db)
 	})
+
+	private.GET("/users/cv/:cvId", func (c *echo.Context) error{
+		return handlers.GetCvById(c, db)
+	})
+
+	private.GET("/users/cv/generated", func (c *echo.Context) error{
+		return handlers.GetGeneratedCvs(c, db)
+	})
 }

@@ -1,12 +1,12 @@
 package services
 
-
 import (
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
+	"os"
 
 	"google.golang.org/genai"
 )
@@ -25,7 +25,7 @@ var client *genai.Client
 func init() {
 	var err error
 	client, err = genai.NewClient(context.Background(), &genai.ClientConfig{
-		APIKey:  "AIzaSyA4SGWtbZutBCS1aG8h-5hqZmf6q6V9-fI",
+		APIKey:  os.Getenv("GEMINI_API_KEY"),
 		Backend: genai.BackendGeminiAPI,
 	})
 

@@ -408,6 +408,18 @@ func GenerateCv(c *echo.Context, db *database.Database) error {
 		})
 	}
 
+	err = db.Query.SaveGeneratedCV(c.Request().Context(), sqlc.SaveGeneratedCVParams{
+		UserId: userId,
+		JobId: jobId,
+		FileName: "Curriculo-" + job.Title,
+		ExtractedText: rawStr,
+		Active: true,
+		CreatedBy: userId.String(),
+		CreatedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
+		LastModifiedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
+		LastModifiedBy: userId.String(),
+	})
+
 	pdfBytes, err := services.GeneratePDF(cvData)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
@@ -457,4 +469,68 @@ func GetUserCv(c *echo.Context, db *database.Database) error{
 		"application/pdf",
 		pdfBytes,
 	)
+}
+
+func GetCvById(c *echo.Context, db *database.Database) error{
+	id := c.Param("cvId")
+
+	var cvId pgtype.UUID
+	if err := cvId.Scan(id); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+	
+	cv, err := db.Query.GetGeneratedCvById(c.Request().Context(), cvId)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "O curriculo informado não foi encontrado"})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	claims := c.Get("user").(*services.Claims)
+	if claims.UserID != cv.UserId.String() {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Este curriculo pertence a outro usuário"})
+	}
+
+	var cvData dto.GeneratedCv
+
+	err = json.Unmarshal([]byte(cv.ExtractedText), &cvData)
+	if err != nil {
+		panic(err)
+	}
+
+	pdfBytes, err := services.GeneratePDF(cvData)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": "Erro ao gerar curriculo: " + err.Error(),
+		})
+	}
+
+	return c.Blob(
+		http.StatusOK,
+		"application/pdf",
+		pdfBytes,
+	)
+}
+
+func GetGeneratedCvs(c *echo.Context, db *database.Database) error {
+	claims := c.Get("user").(*services.Claims)
+
+	var userId pgtype.UUID
+	if err := userId.Scan(claims.UserID); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	userCvs, err := db.Query.GetGeneratedCvs(c.Request().Context(), userId)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "Os curriculos do usuario informado não foi encontrado"})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]any{
+		"message": "Curriculos listados com sucesso",
+		"data": userCvs,
+	})
 }

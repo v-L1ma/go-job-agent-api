@@ -133,3 +133,17 @@ create table public."CvEvaluations" (
 );
 
 create index IF not exists "IX_CvEvaluations_GeneratedCvId" on public."CvEvaluations" using btree ("GeneratedCvId") TABLESPACE pg_default;
+
+CREATE TABLE IF NOT EXISTS public."GeneratedCvsNew" (
+  "Id" uuid not null default gen_random_uuid(),
+  "UserId" uuid not null,
+  "JobId" uuid not null,
+  "FileName" text not null,
+  "ExtractedText" text not null,
+  "Active" boolean not null,
+  "CreatedBy" text not null,
+  "CreatedAt" timestamp with time zone not null,
+  "LastModifiedBy" text not null,
+  "LastModifiedAt" timestamp with time zone not null,
+  constraint PK_GeneratedCvs primary key ("Id")
+);
