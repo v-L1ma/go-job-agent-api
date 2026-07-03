@@ -28,7 +28,7 @@ func Login(c *echo.Context, db *database.Database) error{
 
 	user, err := db.Query.GetUserByEmail(c.Request().Context(), email)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Email e/ou senha inválidos."})
 	}
 
 	err = services.CheckPassword(
