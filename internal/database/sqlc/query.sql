@@ -9,7 +9,14 @@ WHERE EXISTS (
     CROSS JOIN LATERAL unnest(sq."Keywords") AS keyword
     WHERE usq."UserId" = $1
       AND j."Title" ILIKE '%' || keyword || '%'
-);
+)
+AND (
+    sqlc.narg('cursor')::timestamptz IS NULL
+    OR
+    j."CreatedAt" < sqlc.narg('cursor')::timestamptz
+)
+ORDER BY "CreatedAt" DESC
+LIMIT $2;
 
 -- name: GetJobById :one
 SELECT "Id", 

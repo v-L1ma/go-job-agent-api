@@ -400,10 +400,23 @@ WHERE EXISTS (
     WHERE usq."UserId" = $1
       AND j."Title" ILIKE '%' || keyword || '%'
 )
+AND (
+    $3::timestamptz IS NULL
+    OR
+    j."CreatedAt" < $3::timestamptz
+)
+ORDER BY "CreatedAt" DESC
+LIMIT $2
 `
 
-func (q *Queries) GetJobs(ctx context.Context, userid pgtype.UUID) ([]Job, error) {
-	rows, err := q.db.Query(ctx, getJobs, userid)
+type GetJobsParams struct {
+	UserId pgtype.UUID        `db:"UserId" json:"UserId"`
+	Limit  int32              `db:"limit" json:"limit"`
+	Cursor pgtype.Timestamptz `db:"cursor" json:"cursor"`
+}
+
+func (q *Queries) GetJobs(ctx context.Context, arg GetJobsParams) ([]Job, error) {
+	rows, err := q.db.Query(ctx, getJobs, arg.UserId, arg.Limit, arg.Cursor)
 	if err != nil {
 		return nil, err
 	}
