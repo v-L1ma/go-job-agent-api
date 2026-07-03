@@ -212,3 +212,7 @@ UPDATE "PasswordResetTokens" SET "Used" = true WHERE "Id" = $1;
 
 -- name: UpdateUserPasswordByEmail :exec
 UPDATE "AspNetUsers" SET "PasswordHash" = $2 WHERE "Email" = $1;
+
+-- name: CreateApplication :exec
+INSERT INTO "Applications" ("UserId", "JobId", "Status", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt")
+VALUES ($1, $2, $3, $4, $5, $6, $7);

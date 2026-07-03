@@ -11,6 +11,34 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const createApplication = `-- name: CreateApplication :exec
+INSERT INTO "Applications" ("UserId", "JobId", "Status", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt")
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+`
+
+type CreateApplicationParams struct {
+	UserId         pgtype.UUID        `db:"UserId" json:"UserId"`
+	JobId          pgtype.UUID        `db:"JobId" json:"JobId"`
+	Status         string             `db:"Status" json:"Status"`
+	CreatedBy      string             `db:"CreatedBy" json:"CreatedBy"`
+	CreatedAt      pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+	LastModifiedBy string             `db:"LastModifiedBy" json:"LastModifiedBy"`
+	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
+}
+
+func (q *Queries) CreateApplication(ctx context.Context, arg CreateApplicationParams) error {
+	_, err := q.db.Exec(ctx, createApplication,
+		arg.UserId,
+		arg.JobId,
+		arg.Status,
+		arg.CreatedBy,
+		arg.CreatedAt,
+		arg.LastModifiedBy,
+		arg.LastModifiedAt,
+	)
+	return err
+}
+
 const createPasswordResetToken = `-- name: CreatePasswordResetToken :exec
 INSERT INTO "PasswordResetTokens" ("Email", "TokenHash", "ExpiresAt")
 VALUES ($1, $2, $3)

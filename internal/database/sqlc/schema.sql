@@ -159,3 +159,21 @@ CREATE TABLE IF NOT EXISTS public."PasswordResetTokens" (
 );
 
 create index IF not exists IX_PasswordResetTokens_TokenHash on public."PasswordResetTokens" using btree ("TokenHash");
+
+CREATE TABLE IF NOT EXISTS public."Applications" (
+  "Id" uuid not null default gen_random_uuid(),
+  "UserId" uuid not null,
+  "JobId" uuid not null,
+  "Status" text not null,
+  "Obs" text null,
+  "CreatedBy" text not null,
+  "CreatedAt" timestamp with time zone not null,
+  "LastModifiedBy" text not null,
+  "LastModifiedAt" timestamp with time zone not null,
+  constraint PK_Applications primary key ("Id"),
+  constraint FK_Applications_Users_UserId foreign key ("UserId") references "AspNetUsers" ("Id") on delete CASCADE,
+  constraint FK_Applications_Jobs_JobId foreign key ("JobId") references "Jobs" ("Id") on delete CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS IX_Applications_UserId ON public."Applications" USING btree ("UserId");
+CREATE INDEX IF NOT EXISTS IX_Applications_JobId ON public."Applications" USING btree ("JobId");

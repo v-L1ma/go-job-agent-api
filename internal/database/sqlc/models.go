@@ -8,6 +8,18 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Application struct {
+	Id             pgtype.UUID        `db:"Id" json:"Id"`
+	UserId         pgtype.UUID        `db:"UserId" json:"UserId"`
+	JobId          pgtype.UUID        `db:"JobId" json:"JobId"`
+	Status         string             `db:"Status" json:"Status"`
+	Obs            pgtype.Text        `db:"Obs" json:"Obs"`
+	CreatedBy      string             `db:"CreatedBy" json:"CreatedBy"`
+	CreatedAt      pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+	LastModifiedBy string             `db:"LastModifiedBy" json:"LastModifiedBy"`
+	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
+}
+
 type AspNetUser struct {
 	Id                   pgtype.UUID        `db:"Id" json:"Id"`
 	Name                 string             `db:"Name" json:"Name"`

@@ -154,3 +154,32 @@ func RateJob (c *echo.Context, db *database.Database) error{
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "Muito obrigado pela sua avaliação!"})
 }
+
+func ApplyToJob(c *echo.Context, db *database.Database) error {
+	id := c.Param("jobId")
+	var jobID pgtype.UUID
+	if err := jobID.Scan(id); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	claims := c.Get("user").(*services.Claims)
+	var userID pgtype.UUID
+	if err := userID.Scan(claims.UserID); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	err := db.Query.CreateApplication(c.Request().Context(), sqlc.CreateApplicationParams{
+		UserId: userID,
+		JobId: jobID,
+		Status: "applied",
+		CreatedBy: "system",
+		CreatedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
+		LastModifiedBy: "system",
+		LastModifiedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
+	})
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusCreated, map[string]string{"message":"Aplicação concluída com sucesso!"})
+}

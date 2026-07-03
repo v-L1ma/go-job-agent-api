@@ -91,6 +91,14 @@ func RegisterRoutes(e *echo.Echo, db *database.Database) {
 		return handlers.GenerateCv(c, db)
 	})
 
+	private.POST("/jobs/:jobId/apply", func (c *echo.Context) error{
+		return handlers.ApplyToJob(c, db)
+	})
+
+	private.POST("/jobs/:jobId/questions", func (c *echo.Context) error{
+		return handlers.AnswerQuestion(c, db)
+	})
+
 	private.GET("/users/cv", func (c *echo.Context) error{
 		return handlers.GetUserCv(c, db)
 	})
