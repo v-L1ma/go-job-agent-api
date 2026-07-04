@@ -8,7 +8,9 @@ import (
 	"job-agent-api/internal/helpers"
 	"job-agent-api/internal/services"
 	"net/http"
+	"strings"
 	"time"
+	"encoding/json"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/labstack/echo/v5"
@@ -182,4 +184,86 @@ func ApplyToJob(c *echo.Context, db *database.Database) error {
 	}
 
 	return c.JSON(http.StatusCreated, map[string]string{"message":"Aplicação concluída com sucesso!"})
+}
+
+func AnswerQuestion(c *echo.Context, db *database.Database) error {
+	id := c.Param("jobId")
+	var jobID pgtype.UUID
+	if err := jobID.Scan(id); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	claims := c.Get("user").(*services.Claims)
+	var userID pgtype.UUID
+	if err := userID.Scan(claims.UserID); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	var req dto.QuestoesRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+	}
+
+	userCv, err := db.Query.GetUserCv(c.Request().Context(), userID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	questoesJSON, err := json.Marshal(req.Questoes)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	var sb strings.Builder
+
+	sb.WriteString("Você é um especialista em recrutamento e análise de currículos.")
+	sb.WriteString("Sua tarefa é responder as perguntas abaixo com base no currículo do candidato.")
+	sb.WriteString("")
+
+	sb.WriteString("Regras importantes:")
+	sb.WriteString("- Retorne APENAS um JSON válido")
+	sb.WriteString("- O JSON deve conter as respostas para cada pergunta, se a pergunta tiver opções de resposta, escolha a mais adequada com base no currículo do candidato")
+	sb.WriteString("- Se a pergunta for aberta, forneça uma resposta detalhada e completa com base no currículo do candidato")
+	sb.WriteString("- Se a pergunta for de múltipla escolha, forneça a resposta correta com base no currículo do candidato")
+	sb.WriteString("- Se a pergunta for de sim ou não, forneça a resposta correta com base no currículo do candidato")
+	sb.WriteString("- Se não houver informações suficientes no currículo do candidato para responder a pergunta, forneça a resposta mais adequada com base nas informações disponíveis")
+	sb.WriteString("- Não adicione explicações, comentários ou qualquer outro texto fora do JSON")
+	sb.WriteString("- Não use markdown")
+	sb.WriteString("- Não diminua o conteúdo do currículo, seja o mais completo possível")
+	sb.WriteString("")
+
+	sb.WriteString("Currículo:")
+	sb.WriteString("```")
+	sb.WriteString(userCv.ExtractedText)
+	sb.WriteString("```")
+
+	sb.WriteString("Perguntas:")
+	sb.WriteString("```")
+	sb.WriteString(string(questoesJSON))
+	sb.WriteString("```")
+	
+	rawResponse, err := services.GenerateResponse(sb.String())
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error do gemini": err.Error()})
+	}
+
+	rawStr, ok := rawResponse.(string)
+	if !ok {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": "Resposta inválida da IA",
+		})
+	}
+
+	respostas, err := helpers.ParseQuestionsResponse(rawStr)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": "Erro ao analisar resposta da IA: " + err.Error(),
+		})
+	}
+
+	return c.JSON(http.StatusOK, map[string]any{
+		"message": "Respostas recebidas com sucesso!",
+		"data": respostas,
+	})
+
 }

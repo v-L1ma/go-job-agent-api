@@ -177,3 +177,23 @@ CREATE TABLE IF NOT EXISTS public."Applications" (
 
 CREATE INDEX IF NOT EXISTS IX_Applications_UserId ON public."Applications" USING btree ("UserId");
 CREATE INDEX IF NOT EXISTS IX_Applications_JobId ON public."Applications" USING btree ("JobId");
+
+create table public."Questions" (
+  "Id" uuid not null default gen_random_uuid(),
+  "Question" text not null,
+  "Answer" text not null,
+  "JobId" uuid null,
+  "UserId" uuid null,
+  "Active" boolean not null,
+  "CreatedBy" text not null,
+  "CreatedAt" timestamp with time zone not null,
+  "LastModifiedBy" text not null,
+  "LastModifiedAt" timestamp with time zone not null,
+  constraint PK_Questions primary key ("Id"),
+  constraint Questions_JobId_fkey foreign KEY ("JobId") references "Jobs" ("Id"),
+  constraint Questions_UserId_fkey foreign KEY ("UserId") references "AspNetUsers" ("Id")
+) TABLESPACE pg_default;
+
+create index IF not exists "IX_Questions_JobId" on public."Questions" using btree ("JobId") TABLESPACE pg_default;
+
+create index IF not exists "IX_Questions_UserId" on public."Questions" using btree ("UserId") TABLESPACE pg_default;
