@@ -204,12 +204,55 @@ func AnswerQuestion(c *echo.Context, db *database.Database) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
 	}
 
+	questions := make([]string, len(req.Questoes))
+
+	for i, question := range req.Questoes {
+		questions[i] = question.Pergunta
+	}
+		
+	dbAnswer, err := db.Query.FindQuestionAnswer(c.Request().Context(), questions)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": "Erro ao buscar respostas no banco",
+		})
+	}
+
+	answerMap := make(map[string]bool)
+
+	for _, answer := range dbAnswer {
+		answerMap[answer.Question] = true
+	}
+
+	filtered := make([]dto.QuestaoPersonalizada, 0, len(req.Questoes))
+	for _, q := range req.Questoes {
+		if !answerMap[q.Pergunta] {
+			filtered = append(filtered, q)
+		}
+	}
+
+	if len(filtered) == 0 {
+		respostasDTO := make([]dto.RespostaQuestao, len(dbAnswer))
+		for i, a := range dbAnswer {
+			respostasDTO[i] = dto.RespostaQuestao{
+				Pergunta: a.Question,
+				Resposta: a.Answer,
+			}
+		}
+		return c.JSON(http.StatusOK, map[string]any{
+			"message": "Respostas recebidas com sucesso!",
+			"data":    respostasDTO,
+		})
+	}
+
+	fmt.Println("RESPOSTAS ENCONTRADAS:", dbAnswer)
+	fmt.Println("QUESTOES FILTRADAS:", filtered)
+
 	userCv, err := db.Query.GetUserCv(c.Request().Context(), userID)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	questoesJSON, err := json.Marshal(req.Questoes)
+	questoesJSON, err := json.Marshal(filtered)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
@@ -287,27 +330,6 @@ func AnswerQuestion(c *echo.Context, db *database.Database) error {
 	}
 
 	tx.Commit(c.Request().Context())
-
-	questions := make([]string, len(req.Questoes))
-
-	for i, question := range req.Questoes {
-		questions[i] = question.Pergunta
-	}
-		
-	dbAnswer, err := db.Query.FindQuestionAnswer(c.Request().Context(), questions)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{
-			"error": "Erro ao buscar respostas no banco",
-		})
-	}
-
-	answerMap := make(map[string]sqlc.Question)
-
-	for _, answer := range dbAnswer {
-		answerMap[answer.Question] = sqlc.Question{}
-	}
-
-	fmt.Println("RESPOSTAS ENCONTRADAS:", dbAnswer)
 
 	return c.JSON(http.StatusOK, map[string]any{
 		"message": "Respostas recebidas com sucesso!",
