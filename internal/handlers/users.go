@@ -2,8 +2,8 @@ package handlers
 
 import (
 	"job-agent-api/internal/database"
-	"job-agent-api/internal/database/sqlc"
 	"job-agent-api/internal/dto"
+	sqlc "job-agent-api/internal/queries"
 	"job-agent-api/internal/services"
 	"net/http"
 	"strings"
@@ -20,14 +20,14 @@ type SetUserPreferencesRequest struct {
 
 func SetUserPreferences(c *echo.Context, db *database.Database) error {
 	claims := c.Get("user").(*services.Claims)
-	
+
 	var cvId pgtype.UUID
 	if err := cvId.Scan(claims.UserID); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	var req SetUserPreferencesRequest
-	if err := c.Bind(&req); err != nil{
+	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
 	}
 
@@ -37,7 +37,7 @@ func SetUserPreferences(c *echo.Context, db *database.Database) error {
 	}
 
 	existUser, err := db.Query.ExistsUserById(c.Request().Context(), userID)
-	if err != nil{
+	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
@@ -46,26 +46,26 @@ func SetUserPreferences(c *echo.Context, db *database.Database) error {
 	}
 
 	if len(req.Skills) <= 0 && len(req.Levels) <= 0 {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Informe ao menos uma Habilidade e uma senioridade."}) 
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Informe ao menos uma Habilidade e uma senioridade."})
 	}
 
 	alreadyCreated, err := db.Query.FindUserPreferences(c.Request().Context(), userID)
 
-	if err != nil{
+	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	if alreadyCreated {
 		err = db.Query.UpdateUserPreferences(c.Request().Context(), sqlc.UpdateUserPreferencesParams{
-			UserId: userID,
-			Skills: req.Skills,
-			Levels: req.Levels,
-			Active: true,
+			UserId:         userID,
+			Skills:         req.Skills,
+			Levels:         req.Levels,
+			Active:         true,
 			LastModifiedBy: userID.String(),
 			LastModifiedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
 		})
 
-		if err != nil{
+		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
 
@@ -73,17 +73,17 @@ func SetUserPreferences(c *echo.Context, db *database.Database) error {
 	}
 
 	err = db.Query.CreateUserPreferences(c.Request().Context(), sqlc.CreateUserPreferencesParams{
-		UserId: userID,
-		Skills: req.Skills,
-		Levels: req.Levels,
-		Active: true,
+		UserId:         userID,
+		Skills:         req.Skills,
+		Levels:         req.Levels,
+		Active:         true,
 		LastModifiedBy: userID.String(),
 		LastModifiedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
-		CreatedBy: userID.String(),
-		CreatedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
+		CreatedBy:      userID.String(),
+		CreatedAt:      pgtype.Timestamptz{Time: time.Now(), Valid: true},
 	})
 
-	if err != nil{
+	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
@@ -153,13 +153,13 @@ func UpdateProfile(c *echo.Context, db *database.Database) error {
 
 	if user && !strings.EqualFold(claims.Email, req.Email) {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Este e-mail já está em uso."})
-	}//todo terminar de validar se um email ja esta sendo utilizado
+	} //todo terminar de validar se um email ja esta sendo utilizado
 
 	err = db.Query.UpdateUser(c.Request().Context(), sqlc.UpdateUserParams{
-		Id:             userID,
-		Name:           req.Name,
-		CPF:            "",
-		Email:          email,
+		Id:    userID,
+		Name:  req.Name,
+		CPF:   "",
+		Email: email,
 	})
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -204,8 +204,8 @@ func ChangePassword(c *echo.Context, db *database.Database) error {
 	}
 
 	err = db.Query.UpdateUserPassword(c.Request().Context(), sqlc.UpdateUserPasswordParams{
-		Id:             userID,
-		PasswordHash:   pgtype.Text{String: passwordHash, Valid: true},
+		Id:           userID,
+		PasswordHash: pgtype.Text{String: passwordHash, Valid: true},
 	})
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -307,7 +307,7 @@ func GetUserStatistics(c *echo.Context, db *database.Database) error {
 			"count":    0,
 			"thisWeek": 0,
 		},
-		"applicationsPerDay": applicationsPerDay,
+		"applicationsPerDay":   applicationsPerDay,
 		"platformDistribution": platformDistribution,
 		"statusDistribution": []map[string]any{
 			{"status": "Total", "count": total},
@@ -324,10 +324,11 @@ func GetUserStatistics(c *echo.Context, db *database.Database) error {
 	})
 }
 
-func GetUserPreferences(c *echo.Context, db *database.Database) error{
+func GetUserPreferences(c *echo.Context, db *database.Database) error {
 	claims := c.Get("user").(*services.Claims)
 	var userID pgtype.UUID
-	err := userID.Scan(claims.UserID); if err != nil {
+	err := userID.Scan(claims.UserID)
+	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
@@ -341,12 +342,12 @@ func GetUserPreferences(c *echo.Context, db *database.Database) error{
 	}
 
 	userPreferences, err := db.Query.GetUserPreferences(c.Request().Context(), userID)
-	if err != nil{
+	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	return c.JSON(http.StatusOK, dto.ResponseBase[[]sqlc.GetUserPreferencesRow]{
 		Message: "Preferências encontradas com sucesso!",
-		Data: userPreferences,
+		Data:    userPreferences,
 	})
 }

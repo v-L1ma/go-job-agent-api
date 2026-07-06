@@ -4,7 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
-	"job-agent-api/internal/database/sqlc"
+	sqlc "job-agent-api/internal/queries"
 	"os"
 	"time"
 

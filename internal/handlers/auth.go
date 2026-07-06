@@ -2,9 +2,9 @@ package handlers
 
 import (
 	"job-agent-api/internal/database"
-	"job-agent-api/internal/database/sqlc"
 	"job-agent-api/internal/dto"
 	"job-agent-api/internal/helpers"
+	sqlc "job-agent-api/internal/queries"
 	"job-agent-api/internal/services"
 	"net/http"
 	"os"
@@ -15,7 +15,7 @@ import (
 	"github.com/labstack/echo/v5"
 )
 
-func Login(c *echo.Context, db *database.Database) error{
+func Login(c *echo.Context, db *database.Database) error {
 	var req dto.LoginRequest
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
@@ -47,23 +47,23 @@ func Login(c *echo.Context, db *database.Database) error{
 
 	return c.JSON(http.StatusOK, map[string]string{
 		"message": "Login efetuado com sucesso!",
-		"token" : token,
+		"token":   token,
 	})
 }
 
-func Register(c *echo.Context, db *database.Database) error{
+func Register(c *echo.Context, db *database.Database) error {
 	var req dto.RegisterRequest
-	if err := c.Bind(&req); err != nil{
+	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
 	}
 
-	if err := c.Validate(&req); err != nil{
-		return c.JSON(http.StatusBadRequest,map[string]any{
+	if err := c.Validate(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]any{
 			"errors": helpers.ValidationErrors(err),
 		})
 	}
 
-	if req.Password != req.ConfirmPassword{
+	if req.Password != req.ConfirmPassword {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "As senhas não coincidem."})
 	}
 
@@ -79,15 +79,15 @@ func Register(c *echo.Context, db *database.Database) error{
 	}
 
 	err = db.Query.CreateUser(c.Request().Context(), sqlc.CreateUserParams{
-		Name: req.Name,
-		CPF: "",
-		Email: pgtype.Text{String: req.Email, Valid: true},
-		TwoFactorEnabled: false,
-		EmailConfirmed: true,
-		LockoutEnabled: false,
-		AccessFailedCount: 0,
+		Name:                req.Name,
+		CPF:                 "",
+		Email:               pgtype.Text{String: req.Email, Valid: true},
+		TwoFactorEnabled:    false,
+		EmailConfirmed:      true,
+		LockoutEnabled:      false,
+		AccessFailedCount:   0,
 		OnboardingCompleted: false,
-		PasswordHash: pgtype.Text{String: passwordHash, Valid: true},
+		PasswordHash:        pgtype.Text{String: passwordHash, Valid: true},
 	})
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})

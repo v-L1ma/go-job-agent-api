@@ -220,3 +220,9 @@ VALUES ($1, $2, $3, $4, $5, $6, $7);
 -- name: CreateQuestion :exec
 INSERT INTO "Questions" ("UserId", "JobId", "Question", "Answer", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt")
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);
+
+-- name: FindQuestionAnswer :many
+SELECT "Question", 
+    "Answer"
+FROM "Questions"
+WHERE "Question" = ANY(sqlc.arg(questions)::text[]);

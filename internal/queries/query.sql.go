@@ -55,6 +55,38 @@ func (q *Queries) CreatePasswordResetToken(ctx context.Context, arg CreatePasswo
 	return err
 }
 
+const createQuestion = `-- name: CreateQuestion :exec
+INSERT INTO "Questions" ("UserId", "JobId", "Question", "Answer", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt")
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+`
+
+type CreateQuestionParams struct {
+	UserId         pgtype.UUID        `db:"UserId" json:"UserId"`
+	JobId          pgtype.UUID        `db:"JobId" json:"JobId"`
+	Question       string             `db:"Question" json:"Question"`
+	Answer         string             `db:"Answer" json:"Answer"`
+	Active         bool               `db:"Active" json:"Active"`
+	CreatedBy      string             `db:"CreatedBy" json:"CreatedBy"`
+	CreatedAt      pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+	LastModifiedBy string             `db:"LastModifiedBy" json:"LastModifiedBy"`
+	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
+}
+
+func (q *Queries) CreateQuestion(ctx context.Context, arg CreateQuestionParams) error {
+	_, err := q.db.Exec(ctx, createQuestion,
+		arg.UserId,
+		arg.JobId,
+		arg.Question,
+		arg.Answer,
+		arg.Active,
+		arg.CreatedBy,
+		arg.CreatedAt,
+		arg.LastModifiedBy,
+		arg.LastModifiedAt,
+	)
+	return err
+}
+
 const createUser = `-- name: CreateUser :exec
 INSERT INTO "AspNetUsers" ("Name", "CPF", "Email", "PasswordHash", "AccessFailedCount", "OnboardingCompleted", "TwoFactorEnabled", "EmailConfirmed", "PhoneNumberConfirmed", "LockoutEnabled")
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -251,6 +283,38 @@ func (q *Queries) ExistsUserById(ctx context.Context, id pgtype.UUID) (bool, err
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
+}
+
+const findQuestionAnswer = `-- name: FindQuestionAnswer :many
+SELECT "Question", 
+    "Answer"
+FROM "Questions"
+WHERE "Question" = ANY($1::text[])
+`
+
+type FindQuestionAnswerRow struct {
+	Question string `db:"Question" json:"Question"`
+	Answer   string `db:"Answer" json:"Answer"`
+}
+
+func (q *Queries) FindQuestionAnswer(ctx context.Context, questions []string) ([]FindQuestionAnswerRow, error) {
+	rows, err := q.db.Query(ctx, findQuestionAnswer, questions)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []FindQuestionAnswerRow
+	for rows.Next() {
+		var i FindQuestionAnswerRow
+		if err := rows.Scan(&i.Question, &i.Answer); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const findUserPreferences = `-- name: FindUserPreferences :one

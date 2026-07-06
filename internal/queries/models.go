@@ -111,6 +111,19 @@ type PasswordResetToken struct {
 	CreatedAt pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
 }
 
+type Question struct {
+	Id             pgtype.UUID        `db:"Id" json:"Id"`
+	Question       string             `db:"Question" json:"Question"`
+	Answer         string             `db:"Answer" json:"Answer"`
+	JobId          pgtype.UUID        `db:"JobId" json:"JobId"`
+	UserId         pgtype.UUID        `db:"UserId" json:"UserId"`
+	Active         bool               `db:"Active" json:"Active"`
+	CreatedBy      string             `db:"CreatedBy" json:"CreatedBy"`
+	CreatedAt      pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+	LastModifiedBy string             `db:"LastModifiedBy" json:"LastModifiedBy"`
+	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
+}
+
 type SearchQuery struct {
 	Id             pgtype.UUID        `db:"Id" json:"Id"`
 	Query          string             `db:"Query" json:"Query"`
