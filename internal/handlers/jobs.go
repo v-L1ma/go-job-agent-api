@@ -1,16 +1,16 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"job-agent-api/internal/database"
-	"job-agent-api/internal/database/sqlc"
 	"job-agent-api/internal/dto"
 	"job-agent-api/internal/helpers"
+	sqlc "job-agent-api/internal/queries"
 	"job-agent-api/internal/services"
 	"net/http"
 	"strings"
 	"time"
-	"encoding/json"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/labstack/echo/v5"
@@ -260,6 +260,54 @@ func AnswerQuestion(c *echo.Context, db *database.Database) error {
 			"error": "Erro ao analisar resposta da IA: " + err.Error(),
 		})
 	}
+
+	tx, err := db.Begin(c.Request().Context())
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(c.Request().Context())
+
+	qtx := db.Query.WithTx(tx)
+
+	for _, question := range respostas.Respostas {
+		err := qtx.CreateQuestion(c.Request().Context(), sqlc.CreateQuestionParams{
+			UserId: userID,
+			JobId: jobID,
+			Question: question.Pergunta,
+			Answer: question.Resposta,
+			Active: true,
+			CreatedBy: userID.String(),
+			CreatedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
+			LastModifiedBy: userID.String(),
+			LastModifiedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	tx.Commit(c.Request().Context())
+
+	questions := make([]string, len(req.Questoes))
+
+	for i, question := range req.Questoes {
+		questions[i] = question.Pergunta
+	}
+		
+	dbAnswer, err := db.Query.FindQuestionAnswer(c.Request().Context(), questions)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": "Erro ao buscar respostas no banco",
+		})
+	}
+
+	answerMap := make(map[string]sqlc.Question)
+
+	for _, answer := range dbAnswer {
+		answerMap[answer.Question] = sqlc.Question{}
+	}
+
+	fmt.Println("RESPOSTAS ENCONTRADAS:", dbAnswer)
 
 	return c.JSON(http.StatusOK, map[string]any{
 		"message": "Respostas recebidas com sucesso!",
