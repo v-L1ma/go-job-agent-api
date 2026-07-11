@@ -12,14 +12,16 @@ import (
 )
 
 const createApplication = `-- name: CreateApplication :exec
-INSERT INTO "Applications" ("UserId", "JobId", "Status", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt")
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO "Applications" ("UserId", "JobId", "Status", "Obs", "Platform", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt")
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 `
 
 type CreateApplicationParams struct {
 	UserId         pgtype.UUID        `db:"UserId" json:"UserId"`
 	JobId          pgtype.UUID        `db:"JobId" json:"JobId"`
 	Status         string             `db:"Status" json:"Status"`
+	Obs            pgtype.Text        `db:"Obs" json:"Obs"`
+	Platform       pgtype.Text        `db:"Platform" json:"Platform"`
 	CreatedBy      string             `db:"CreatedBy" json:"CreatedBy"`
 	CreatedAt      pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
 	LastModifiedBy string             `db:"LastModifiedBy" json:"LastModifiedBy"`
@@ -31,6 +33,40 @@ func (q *Queries) CreateApplication(ctx context.Context, arg CreateApplicationPa
 		arg.UserId,
 		arg.JobId,
 		arg.Status,
+		arg.Obs,
+		arg.Platform,
+		arg.CreatedBy,
+		arg.CreatedAt,
+		arg.LastModifiedBy,
+		arg.LastModifiedAt,
+	)
+	return err
+}
+
+const createApplicationRate = `-- name: CreateApplicationRate :exec
+INSERT INTO "ApplicationEvaluations" ("UserId", "ApplicationId", "Liked", "Feedback", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt")
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+`
+
+type CreateApplicationRateParams struct {
+	UserId         pgtype.UUID        `db:"UserId" json:"UserId"`
+	ApplicationId  pgtype.UUID        `db:"ApplicationId" json:"ApplicationId"`
+	Liked          bool               `db:"Liked" json:"Liked"`
+	Feedback       pgtype.Text        `db:"Feedback" json:"Feedback"`
+	Active         bool               `db:"Active" json:"Active"`
+	CreatedBy      string             `db:"CreatedBy" json:"CreatedBy"`
+	CreatedAt      pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+	LastModifiedBy string             `db:"LastModifiedBy" json:"LastModifiedBy"`
+	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
+}
+
+func (q *Queries) CreateApplicationRate(ctx context.Context, arg CreateApplicationRateParams) error {
+	_, err := q.db.Exec(ctx, createApplicationRate,
+		arg.UserId,
+		arg.ApplicationId,
+		arg.Liked,
+		arg.Feedback,
+		arg.Active,
 		arg.CreatedBy,
 		arg.CreatedAt,
 		arg.LastModifiedBy,
@@ -491,8 +527,11 @@ WHERE EXISTS (
     CROSS JOIN LATERAL unnest(sq."Keywords") AS keyword
     WHERE usq."UserId" = $1
       AND j."Title" ILIKE '%' || keyword || '%'
-)
-AND (
+) AND NOT EXISTS (
+    SELECT 1
+    FROM "Applications" a
+    WHERE a."JobId" = j."Id"
+) AND (
     $3::timestamptz IS NULL
     OR
     j."CreatedAt" < $3::timestamptz
@@ -621,6 +660,72 @@ func (q *Queries) GetPrevMonthJobCount(ctx context.Context, userid pgtype.UUID) 
 	var count int32
 	err := row.Scan(&count)
 	return count, err
+}
+
+const getQuestionById = `-- name: GetQuestionById :one
+SELECT q."Question",
+    q."Answer",
+    q."UserId"
+FROM "Questions" AS q
+WHERE "Id" = $1 AND q."Active" = true
+`
+
+type GetQuestionByIdRow struct {
+	Question string      `db:"Question" json:"Question"`
+	Answer   string      `db:"Answer" json:"Answer"`
+	UserId   pgtype.UUID `db:"UserId" json:"UserId"`
+}
+
+func (q *Queries) GetQuestionById(ctx context.Context, id pgtype.UUID) (GetQuestionByIdRow, error) {
+	row := q.db.QueryRow(ctx, getQuestionById, id)
+	var i GetQuestionByIdRow
+	err := row.Scan(&i.Question, &i.Answer, &i.UserId)
+	return i, err
+}
+
+const getUserApplications = `-- name: GetUserApplications :many
+SELECT a."Status",
+    a."Obs",
+    a."Platform",
+    j."Title",
+    a."CreatedAt"
+FROM "Applications" AS a
+LEFT JOIN "Jobs" AS j ON j."Id" = a."JobId"
+WHERE a."UserId" = $1
+`
+
+type GetUserApplicationsRow struct {
+	Status    string             `db:"Status" json:"Status"`
+	Obs       pgtype.Text        `db:"Obs" json:"Obs"`
+	Platform  pgtype.Text        `db:"Platform" json:"Platform"`
+	Title     pgtype.Text        `db:"Title" json:"Title"`
+	CreatedAt pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+}
+
+func (q *Queries) GetUserApplications(ctx context.Context, userid pgtype.UUID) ([]GetUserApplicationsRow, error) {
+	rows, err := q.db.Query(ctx, getUserApplications, userid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetUserApplicationsRow
+	for rows.Next() {
+		var i GetUserApplicationsRow
+		if err := rows.Scan(
+			&i.Status,
+			&i.Obs,
+			&i.Platform,
+			&i.Title,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
@@ -776,6 +881,41 @@ func (q *Queries) GetUserPreferences(ctx context.Context, userid pgtype.UUID) ([
 	return items, nil
 }
 
+const getUserQuestions = `-- name: GetUserQuestions :many
+SELECT q."Question",
+    q."Answer",
+    j."Title"
+FROM "Questions" AS q
+LEFT JOIN "Jobs" AS j ON j."Id" = q."JobId"
+WHERE "UserId" = $1 AND q."Active" = true
+`
+
+type GetUserQuestionsRow struct {
+	Question string      `db:"Question" json:"Question"`
+	Answer   string      `db:"Answer" json:"Answer"`
+	Title    pgtype.Text `db:"Title" json:"Title"`
+}
+
+func (q *Queries) GetUserQuestions(ctx context.Context, userid pgtype.UUID) ([]GetUserQuestionsRow, error) {
+	rows, err := q.db.Query(ctx, getUserQuestions, userid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetUserQuestionsRow
+	for rows.Next() {
+		var i GetUserQuestionsRow
+		if err := rows.Scan(&i.Question, &i.Answer, &i.Title); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markResetTokenAsUsed = `-- name: MarkResetTokenAsUsed :exec
 UPDATE "PasswordResetTokens" SET "Used" = true WHERE "Id" = $1
 `
@@ -844,6 +984,20 @@ func (q *Queries) SaveUserCv(ctx context.Context, arg SaveUserCvParams) error {
 		arg.LastModifiedBy,
 		arg.LastModifiedAt,
 	)
+	return err
+}
+
+const updateQuestionAnswer = `-- name: UpdateQuestionAnswer :exec
+UPDATE "Questions" SET "Answer" = $2 WHERE "Id" = $1
+`
+
+type UpdateQuestionAnswerParams struct {
+	Id     pgtype.UUID `db:"Id" json:"Id"`
+	Answer string      `db:"Answer" json:"Answer"`
+}
+
+func (q *Queries) UpdateQuestionAnswer(ctx context.Context, arg UpdateQuestionAnswerParams) error {
+	_, err := q.db.Exec(ctx, updateQuestionAnswer, arg.Id, arg.Answer)
 	return err
 }
 

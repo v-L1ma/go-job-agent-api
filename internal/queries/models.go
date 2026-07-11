@@ -14,6 +14,20 @@ type Application struct {
 	JobId          pgtype.UUID        `db:"JobId" json:"JobId"`
 	Status         string             `db:"Status" json:"Status"`
 	Obs            pgtype.Text        `db:"Obs" json:"Obs"`
+	Platform       pgtype.Text        `db:"Platform" json:"Platform"`
+	CreatedBy      string             `db:"CreatedBy" json:"CreatedBy"`
+	CreatedAt      pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+	LastModifiedBy string             `db:"LastModifiedBy" json:"LastModifiedBy"`
+	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
+}
+
+type ApplicationEvaluation struct {
+	Id             pgtype.UUID        `db:"Id" json:"Id"`
+	UserId         pgtype.UUID        `db:"UserId" json:"UserId"`
+	ApplicationId  pgtype.UUID        `db:"ApplicationId" json:"ApplicationId"`
+	Liked          bool               `db:"Liked" json:"Liked"`
+	Feedback       pgtype.Text        `db:"Feedback" json:"Feedback"`
+	Active         bool               `db:"Active" json:"Active"`
 	CreatedBy      string             `db:"CreatedBy" json:"CreatedBy"`
 	CreatedAt      pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
 	LastModifiedBy string             `db:"LastModifiedBy" json:"LastModifiedBy"`

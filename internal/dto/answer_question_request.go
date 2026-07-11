@@ -7,6 +7,7 @@ type QuestaoPersonalizada struct {
 }
 
 type QuestoesRequest struct {
+    JobId    string   `json:"jobId"`
     Questoes []QuestaoPersonalizada `json:"questoes"`
 }
 

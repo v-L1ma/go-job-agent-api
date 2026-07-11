@@ -9,8 +9,11 @@ WHERE EXISTS (
     CROSS JOIN LATERAL unnest(sq."Keywords") AS keyword
     WHERE usq."UserId" = $1
       AND j."Title" ILIKE '%' || keyword || '%'
-)
-AND (
+) AND NOT EXISTS (
+    SELECT 1
+    FROM "Applications" a
+    WHERE a."JobId" = j."Id"
+) AND (
     sqlc.narg('cursor')::timestamptz IS NULL
     OR
     j."CreatedAt" < sqlc.narg('cursor')::timestamptz
@@ -214,8 +217,8 @@ UPDATE "PasswordResetTokens" SET "Used" = true WHERE "Id" = $1;
 UPDATE "AspNetUsers" SET "PasswordHash" = $2 WHERE "Email" = $1;
 
 -- name: CreateApplication :exec
-INSERT INTO "Applications" ("UserId", "JobId", "Status", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt")
-VALUES ($1, $2, $3, $4, $5, $6, $7);
+INSERT INTO "Applications" ("UserId", "JobId", "Status", "Obs", "Platform", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt")
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);
 
 -- name: CreateQuestion :exec
 INSERT INTO "Questions" ("UserId", "JobId", "Question", "Answer", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt")
@@ -226,3 +229,35 @@ SELECT "Question",
     "Answer"
 FROM "Questions"
 WHERE "Question" = ANY(sqlc.arg(questions)::text[]);
+
+-- name: GetUserQuestions :many
+SELECT q."Question",
+    q."Answer",
+    j."Title"
+FROM "Questions" AS q
+LEFT JOIN "Jobs" AS j ON j."Id" = q."JobId"
+WHERE "UserId" = $1 AND q."Active" = true;
+
+-- name: GetQuestionById :one
+SELECT q."Question",
+    q."Answer",
+    q."UserId"
+FROM "Questions" AS q
+WHERE "Id" = $1 AND q."Active" = true;
+
+-- name: UpdateQuestionAnswer :exec
+UPDATE "Questions" SET "Answer" = $2 WHERE "Id" = $1;
+
+-- name: GetUserApplications :many
+SELECT a."Status",
+    a."Obs",
+    a."Platform",
+    j."Title",
+    a."CreatedAt"
+FROM "Applications" AS a
+LEFT JOIN "Jobs" AS j ON j."Id" = a."JobId"
+WHERE a."UserId" = $1;
+
+-- name: CreateApplicationRate :exec
+INSERT INTO "ApplicationEvaluations" ("UserId", "ApplicationId", "Liked", "Feedback", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt")
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);

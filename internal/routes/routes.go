@@ -75,55 +75,71 @@ func RegisterRoutes(e *echo.Echo, db *database.Database) {
 		return handlers.RateJob(c, db)
 	})
 
-	private.POST("/users/preferences",func (c *echo.Context) error{
-		return handlers.SetUserPreferences(c, db)
-	})
-
-	private.GET("/users/preferences", func (c *echo.Context) error{
-		return handlers.GetUserPreferences(c, db)
-	})
-
-	private.POST("/users/cv", func (c *echo.Context) error{
-		return handlers.UploadCv(c, db)
-	})
-
 	private.POST("/jobs/:jobId/cv", func (c *echo.Context) error{
 		return handlers.GenerateCv(c, db)
 	})
 
-	private.POST("/jobs/:jobId/apply", func (c *echo.Context) error{
-		return handlers.ApplyToJob(c, db)
+	private.POST("/preferences",func (c *echo.Context) error{
+		return handlers.SetUserPreferences(c, db)
 	})
 
-	private.POST("/jobs/:jobId/questions", func (c *echo.Context) error{
-		return handlers.AnswerQuestion(c, db)
+	private.GET("/preferences", func (c *echo.Context) error{
+		return handlers.GetUserPreferences(c, db)
 	})
 
-	private.GET("/users/cv", func (c *echo.Context) error{
+	private.POST("/cv", func (c *echo.Context) error{
+		return handlers.UploadCv(c, db)
+	})
+
+	private.GET("/cv", func (c *echo.Context) error{
 		return handlers.GetUserCv(c, db)
 	})
 
-	private.GET("/users/cv/:cvId", func (c *echo.Context) error{
+	private.GET("/cv/:cvId", func (c *echo.Context) error{
 		return handlers.GetCvById(c, db)
 	})
 
-	private.GET("/users/cv/generated", func (c *echo.Context) error{
+	private.GET("/cv/generated", func (c *echo.Context) error{
 		return handlers.GetGeneratedCvs(c, db)
 	})
 
-	private.GET("/users/profile", func(c *echo.Context) error {
+	private.GET("/profile", func(c *echo.Context) error {
 		return handlers.GetUserProfile(c, db)
 	})
 
-	private.PUT("/users/profile", func(c *echo.Context) error {
+	private.PUT("/profile", func(c *echo.Context) error {
 		return handlers.UpdateProfile(c, db)
 	})
 
-	private.PUT("/users/change-password", func(c *echo.Context) error {
+	private.PUT("/change-password", func(c *echo.Context) error {
 		return handlers.ChangePassword(c, db)
 	})
 
-	private.GET("/users/statistics", func(c *echo.Context) error {
+	private.GET("/statistics", func(c *echo.Context) error {
 		return handlers.GetUserStatistics(c, db)
+	})
+
+	private.GET("/questions", func (c *echo.Context) error {
+		return handlers.GetQuestions(c, db)
+	})
+
+	private.PUT("/questions/:questionId", func (c *echo.Context) error {
+		return handlers.EditQuestion(c, db)
+	})
+
+	private.POST("/questions", func (c *echo.Context) error{
+		return handlers.AnswerQuestion(c, db)
+	})
+
+	private.POST("/applications", func (c *echo.Context) error{
+		return handlers.ApplyToJob(c, db)
+	})
+
+	private.GET("/applications", func (c *echo.Context) error{
+		return handlers.GetApplications(c, db)
+	})
+	
+	private.POST("/applications/:applicationId/rate", func (c *echo.Context) error{
+		return handlers.RateApplication(c, db)
 	})
 }

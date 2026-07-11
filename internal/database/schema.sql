@@ -166,6 +166,7 @@ CREATE TABLE IF NOT EXISTS public."Applications" (
   "JobId" uuid not null,
   "Status" text not null,
   "Obs" text null,
+  "Platform" text null,
   "CreatedBy" text not null,
   "CreatedAt" timestamp with time zone not null,
   "LastModifiedBy" text not null,
@@ -197,3 +198,19 @@ create table public."Questions" (
 create index IF not exists "IX_Questions_JobId" on public."Questions" using btree ("JobId") TABLESPACE pg_default;
 
 create index IF not exists "IX_Questions_UserId" on public."Questions" using btree ("UserId") TABLESPACE pg_default;
+
+CREATE TABLE IF NOT EXISTS public."ApplicationEvaluations" (
+  "Id" uuid not null default gen_random_uuid(),
+  "UserId" uuid not null,
+  "ApplicationId" uuid not null,
+  "Liked" boolean not null,
+  "Feedback" text null,
+  "Active" boolean not null,
+  "CreatedBy" text not null,
+  "CreatedAt" timestamp with time zone not null,
+  "LastModifiedBy" text not null,
+  "LastModifiedAt" timestamp with time zone not null,
+  constraint PK_ApplicationEvaluations primary key ("Id"),
+  constraint FK_ApplicationEvaluations_Applications_ApplicationId foreign KEY ("ApplicationId") references "Applications" ("Id") on delete CASCADE,
+  constraint FK_ApplicationEvaluations_AspNetUsers_UserId foreign KEY ("UserId") references "AspNetUsers" ("Id") on delete CASCADE
+);
