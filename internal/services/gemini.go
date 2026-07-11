@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"google.golang.org/genai"
 )
@@ -60,6 +61,46 @@ func ParseGeminiResponse(rawResponse string) (GeminiResponseWrapper, error) {
     return wrapper, nil
 }
 
+var models = []string{
+    "gemma-4-31b-it",
+    "gemini-3.5-flash",
+    "gemini-3.1-flash-lite",
+    "gemini-3-flash-preview",
+    "gemini-2.5-flash",
+}
+
+func callModel(ctx context.Context, model, prompt string) (string, error) {
+    response, err := client.Models.GenerateContent(
+        ctx,
+        model,
+        genai.Text(prompt),
+        &genai.GenerateContentConfig{
+            ThinkingConfig: &genai.ThinkingConfig{
+                ThinkingLevel: genai.ThinkingLevelHigh,
+            },
+            Tools: []*genai.Tool{
+                {CodeExecution: &genai.ToolCodeExecution{}},
+            },
+        },
+    )
+
+    if err != nil {
+        return "", err
+    }
+
+    if len(response.Candidates) == 0 {
+        return "", fmt.Errorf("no candidates")
+    }
+
+    if len(response.Candidates[0].Content.Parts) == 0 {
+        return "", fmt.Errorf("empty response")
+    }
+
+    text := response.Candidates[0].Content.Parts[len(response.Candidates)].Text
+    fmt.Printf("[DEBUG] model=%s response_text=%s\n", model, text)
+    return text, nil
+}
+
 func GenerateResponse(prompt string) (any, error) {
 	if client == nil {
 		return GeminiResponseWrapper{}, errors.New("gemini client not initialized")
@@ -69,33 +110,33 @@ func GenerateResponse(prompt string) (any, error) {
 
 	ctx := context.Background()
 
-	response, err := client.Models.GenerateContent(ctx, 
-		"gemma-4-31b-it", 
-		genai.Text(prompt), 
-		&genai.GenerateContentConfig{
-			ThinkingConfig: &genai.ThinkingConfig{
-				ThinkingLevel: genai.ThinkingLevelHigh,
-			},
-			Tools: []*genai.Tool{
-				{CodeExecution: &genai.ToolCodeExecution{}},
-			},
-		},
-	)
+	var errs []error
 
-	debugPrint(&response)
+    const maxRetries = 3
 
-	if err != nil {
-		return GeminiResponseWrapper{}, fmt.Errorf("failed to generate response: %v", err)
+	for _, model := range models {
+
+		for retry := 1; retry <= maxRetries; retry++ {
+
+			response, err := callModel(ctx, model, prompt)
+
+			if err == nil {
+				return response, nil
+			}
+
+			log.Printf(
+				"model=%s retry=%d error=%v",
+				model,
+				retry,
+				err,
+			)
+
+			errs = append(errs, fmt.Errorf("%s: %w", model, err))
+
+			time.Sleep(time.Duration(retry) * time.Second)
+		}
 	}
-
-	geminiResponse := response.Candidates[0].Content.Parts[len(response.Candidates)].Text
-
-	// respostas, err := ParseGeminiResponse(geminiResponse)
-	// if err != nil {
-	// 	log.Printf("Erro ao processar respostas: %v", err)
-	// }
-
-	return geminiResponse, nil
+    return nil, errors.Join(errs...)
 }
 
 func debugPrint[T any](r *T) {
