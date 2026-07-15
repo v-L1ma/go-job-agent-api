@@ -88,7 +88,6 @@ func SetUserPreferences(c *echo.Context, db *database.Database) error {
 
 	query.WriteString(")")
 
-	//todo verificar se alguma outra pessoa usa a mesma query, se sim, criar uma nova searchQuery e apenas atualizar o userSearchQuery do usuario atual para apontar para a nova searchQuery
 	var normalizedHash strings.Builder
 	
 	for i, skill := range req.Skills {
@@ -104,27 +103,59 @@ func SetUserPreferences(c *echo.Context, db *database.Database) error {
 		normalizedHash.WriteString(level)
 	}
 
-	usedByAnotherUser, err := db.Query.ExistsSearchQueryByAnotherUser(c.Request().Context(), sqlc.ExistsSearchQueryByAnotherUserParams{
-		NormalizedHash: normalizedHash.String(),
-		UserId: userID,
-	})
+	if alreadyCreated {
+		currentSearchQueryId, err := db.Query.GetSearchQueryIdByUserId(c.Request().Context(), userID)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
 
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
-	}
-
-	if alreadyCreated && !usedByAnotherUser {
-		err := db.Query.UpdateSearchQuery(c.Request().Context(), sqlc.UpdateSearchQueryParams{
-			Query: query.String(),
-			Levels: req.Levels,
-			Keywords: req.Skills,
-			NormalizedHash: normalizedHash.String(),
-			LastModifiedBy: userID.String(),
-			LastModifiedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
+		usedByAnotherUser, err := db.Query.ExistsSearchQueryByAnotherUser(c.Request().Context(), sqlc.ExistsSearchQueryByAnotherUserParams{
+			SearchQueryId: currentSearchQueryId,
 			UserId: userID,
 		})
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error update": err.Error()})
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+
+		if !usedByAnotherUser {
+			err := db.Query.UpdateSearchQuery(c.Request().Context(), sqlc.UpdateSearchQueryParams{
+				Query: query.String(),
+				Levels: req.Levels,
+				Keywords: req.Skills,
+				NormalizedHash: normalizedHash.String(),
+				LastModifiedBy: userID.String(),
+				LastModifiedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
+				UserId: userID,
+			})
+			if err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error update": err.Error()})
+			}
+
+			return c.JSON(http.StatusOK, map[string]string{"message": "Preferências atualizadas com sucesso!"})
+		}
+
+		searchQueryId, err := db.Query.CreateSearchQuery(c.Request().Context(), sqlc.CreateSearchQueryParams{
+			Query:          query.String(),
+			Keywords:       req.Skills,
+			NormalizedHash: normalizedHash.String(),
+			Area:             "",
+			Levels:           req.Levels,
+			Active:           true,
+			CreatedBy:      userID.String(),
+			CreatedAt:      pgtype.Timestamptz{Time: time.Now(), Valid: true},
+			LastModifiedBy: userID.String(),
+			LastModifiedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
+		})
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error create": err.Error()})
+		}
+
+		err = db.Query.UpdateUserSearchQuery(c.Request().Context(), sqlc.UpdateUserSearchQueryParams{
+			UserId: userID,
+			SearchQueryId: searchQueryId,
+		})
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error update user search query": err.Error()})
 		}
 
 		return c.JSON(http.StatusOK, map[string]string{"message": "Preferências atualizadas com sucesso!"})
@@ -147,20 +178,6 @@ func SetUserPreferences(c *echo.Context, db *database.Database) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error create": err.Error()})
 	}
 
-	//aqui tem q apontar se estiver como alreadyUsedByAnotherUser, se não, criar um novo userSearchQuery
-	if alreadyCreated && usedByAnotherUser {
-		err = db.Query.UpdateUserSearchQuery(c.Request().Context(), sqlc.UpdateUserSearchQueryParams{
-			UserId: userID,
-			SearchQueryId: searchQueryId,
-		})
-
-		if err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error update user search query": err.Error()})
-		}
-
-		return c.JSON(http.StatusOK, map[string]string{"message": "Preferências atualizadas com sucesso!"})
-	}
-	
 	err = db.Query.CreateUserSearchQuery(c.Request().Context(), sqlc.CreateUserSearchQueryParams{
 		UserId: userID,
 		SearchQueryId: searchQueryId,

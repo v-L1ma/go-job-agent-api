@@ -286,16 +286,16 @@ SELECT EXISTS (
     WHERE "UserId" = $1
 ) AS "exists";
 
+-- name: GetSearchQueryIdByUserId :one
+SELECT "SearchQueryId" FROM "UserSearchQueries"
+WHERE "UserId" = $1;
+
 -- name: ExistsSearchQueryByAnotherUser :one
 SELECT EXISTS (
     SELECT 1
-    FROM "SearchQueries"
-    WHERE "NormalizedHash" = $1
-    AND "Id" IN (
-        SELECT "SearchQueryId"
-        FROM "UserSearchQueries"
-        WHERE "UserId" != $2
-    )
+    FROM "UserSearchQueries"
+    WHERE "SearchQueryId" = $1
+    AND "UserId" != $2
 ) AS "exists";
 
 -- name: GetSearchQueryByUserId :one

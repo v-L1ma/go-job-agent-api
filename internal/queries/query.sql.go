@@ -346,23 +346,19 @@ func (q *Queries) ExistsJobEvaluation(ctx context.Context, arg ExistsJobEvaluati
 const existsSearchQueryByAnotherUser = `-- name: ExistsSearchQueryByAnotherUser :one
 SELECT EXISTS (
     SELECT 1
-    FROM "SearchQueries"
-    WHERE "NormalizedHash" = $1
-    AND "Id" IN (
-        SELECT "SearchQueryId"
-        FROM "UserSearchQueries"
-        WHERE "UserId" != $2
-    )
+    FROM "UserSearchQueries"
+    WHERE "SearchQueryId" = $1
+    AND "UserId" != $2
 ) AS "exists"
 `
 
 type ExistsSearchQueryByAnotherUserParams struct {
-	NormalizedHash string      `db:"NormalizedHash" json:"NormalizedHash"`
-	UserId         pgtype.UUID `db:"UserId" json:"UserId"`
+	SearchQueryId pgtype.UUID `db:"SearchQueryId" json:"SearchQueryId"`
+	UserId        pgtype.UUID `db:"UserId" json:"UserId"`
 }
 
 func (q *Queries) ExistsSearchQueryByAnotherUser(ctx context.Context, arg ExistsSearchQueryByAnotherUserParams) (bool, error) {
-	row := q.db.QueryRow(ctx, existsSearchQueryByAnotherUser, arg.NormalizedHash, arg.UserId)
+	row := q.db.QueryRow(ctx, existsSearchQueryByAnotherUser, arg.SearchQueryId, arg.UserId)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
@@ -801,6 +797,18 @@ func (q *Queries) GetSearchQueryByUserId(ctx context.Context, userid pgtype.UUID
 		&i.Levels,
 	)
 	return i, err
+}
+
+const getSearchQueryIdByUserId = `-- name: GetSearchQueryIdByUserId :one
+SELECT "SearchQueryId" FROM "UserSearchQueries"
+WHERE "UserId" = $1
+`
+
+func (q *Queries) GetSearchQueryIdByUserId(ctx context.Context, userid pgtype.UUID) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, getSearchQueryIdByUserId, userid)
+	var SearchQueryId pgtype.UUID
+	err := row.Scan(&SearchQueryId)
+	return SearchQueryId, err
 }
 
 const getUserApplications = `-- name: GetUserApplications :many
