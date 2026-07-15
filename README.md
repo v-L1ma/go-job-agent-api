@@ -28,3 +28,12 @@ getuserStatistics ===================== FEITO
 
 evaluateUserCV - listar pontos de melhorias no curriculo atual do usuário
 Nao tenho curriculo - opçao na mesma tela de curriculo que permite o usuario criar um curriculo para ele
+
+applyJob - preciso criar uma rota para marcar quais vagas foram aplicadas para quais usuarios, criar uma tabela com userId, JobId, Status, Obs
+
+getRespostas
+getCandidaturas
+
+parece que o search queries nao esta sendo alterado ao settar as users preferences e a tabela de users preferences nem deveria ser mais utilizada
+
+tem q ver se o get de preferences ta trazendo de acordo com a search query

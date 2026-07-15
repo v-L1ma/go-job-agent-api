@@ -261,3 +261,45 @@ WHERE a."UserId" = $1;
 -- name: CreateApplicationRate :exec
 INSERT INTO "ApplicationEvaluations" ("UserId", "ApplicationId", "Liked", "Feedback", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt")
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);
+
+-- name: CreateUserSearchQuery :exec
+INSERT INTO "UserSearchQueries" ("UserId", "SearchQueryId", "CreatedAt")
+VALUES ($1, $2, $3);
+
+-- name: UpdateUserSearchQuery :exec
+UPDATE "UserSearchQueries" SET "SearchQueryId" = $2
+WHERE "UserId" = $1;
+
+-- name: CreateSearchQuery :one
+INSERT INTO "SearchQueries" ("Query", "Keywords", "NormalizedHash", "Area", "Levels", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt")
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING "Id";
+
+-- name: UpdateSearchQuery :exec
+UPDATE "SearchQueries" SET "Query" = $1, "Keywords" = $2, "NormalizedHash" = $3, "Levels" = $4, "LastModifiedBy" = $5, "LastModifiedAt" = $6
+FROM "UserSearchQueries" AS usq
+WHERE usq."UserId" = $7 AND usq."SearchQueryId" = "SearchQueries"."Id";
+
+-- name: ExistsSearchQueryByUserId :one
+SELECT EXISTS (
+    SELECT 1
+    FROM "UserSearchQueries"
+    WHERE "UserId" = $1
+) AS "exists";
+
+-- name: ExistsSearchQueryByAnotherUser :one
+SELECT EXISTS (
+    SELECT 1
+    FROM "SearchQueries"
+    WHERE "NormalizedHash" = $1
+    AND "Id" IN (
+        SELECT "SearchQueryId"
+        FROM "UserSearchQueries"
+        WHERE "UserId" != $2
+    )
+) AS "exists";
+
+-- name: GetSearchQueryByUserId :one
+SELECT sq."Id", sq."Query", sq."Keywords", sq."NormalizedHash", sq."Levels"
+FROM "SearchQueries" AS sq
+LEFT JOIN "UserSearchQueries" AS usq ON usq."SearchQueryId" = sq."Id"
+WHERE usq."UserId" = $1;

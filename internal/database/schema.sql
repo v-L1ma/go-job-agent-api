@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS public."Jobs" (
 );
 
 CREATE TABLE IF NOT EXISTS public."SearchQueries" (
-  "Id" uuid not null,
+  "Id" uuid not null default gen_random_uuid(),
   "Query" text not null,
   "Keywords" text[] not null,
   "Area" text not null,

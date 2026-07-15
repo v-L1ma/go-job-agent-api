@@ -123,6 +123,42 @@ func (q *Queries) CreateQuestion(ctx context.Context, arg CreateQuestionParams) 
 	return err
 }
 
+const createSearchQuery = `-- name: CreateSearchQuery :one
+INSERT INTO "SearchQueries" ("Query", "Keywords", "NormalizedHash", "Area", "Levels", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt")
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING "Id"
+`
+
+type CreateSearchQueryParams struct {
+	Query          string             `db:"Query" json:"Query"`
+	Keywords       []string           `db:"Keywords" json:"Keywords"`
+	NormalizedHash string             `db:"NormalizedHash" json:"NormalizedHash"`
+	Area           string             `db:"Area" json:"Area"`
+	Levels         []string           `db:"Levels" json:"Levels"`
+	Active         bool               `db:"Active" json:"Active"`
+	CreatedBy      string             `db:"CreatedBy" json:"CreatedBy"`
+	CreatedAt      pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+	LastModifiedBy string             `db:"LastModifiedBy" json:"LastModifiedBy"`
+	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
+}
+
+func (q *Queries) CreateSearchQuery(ctx context.Context, arg CreateSearchQueryParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, createSearchQuery,
+		arg.Query,
+		arg.Keywords,
+		arg.NormalizedHash,
+		arg.Area,
+		arg.Levels,
+		arg.Active,
+		arg.CreatedBy,
+		arg.CreatedAt,
+		arg.LastModifiedBy,
+		arg.LastModifiedAt,
+	)
+	var Id pgtype.UUID
+	err := row.Scan(&Id)
+	return Id, err
+}
+
 const createUser = `-- name: CreateUser :exec
 INSERT INTO "AspNetUsers" ("Name", "CPF", "Email", "PasswordHash", "AccessFailedCount", "OnboardingCompleted", "TwoFactorEnabled", "EmailConfirmed", "PhoneNumberConfirmed", "LockoutEnabled")
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -184,6 +220,22 @@ func (q *Queries) CreateUserPreferences(ctx context.Context, arg CreateUserPrefe
 		arg.LastModifiedBy,
 		arg.LastModifiedAt,
 	)
+	return err
+}
+
+const createUserSearchQuery = `-- name: CreateUserSearchQuery :exec
+INSERT INTO "UserSearchQueries" ("UserId", "SearchQueryId", "CreatedAt")
+VALUES ($1, $2, $3)
+`
+
+type CreateUserSearchQueryParams struct {
+	UserId        pgtype.UUID        `db:"UserId" json:"UserId"`
+	SearchQueryId pgtype.UUID        `db:"SearchQueryId" json:"SearchQueryId"`
+	CreatedAt     pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+}
+
+func (q *Queries) CreateUserSearchQuery(ctx context.Context, arg CreateUserSearchQueryParams) error {
+	_, err := q.db.Exec(ctx, createUserSearchQuery, arg.UserId, arg.SearchQueryId, arg.CreatedAt)
 	return err
 }
 
@@ -286,6 +338,46 @@ type ExistsJobEvaluationParams struct {
 
 func (q *Queries) ExistsJobEvaluation(ctx context.Context, arg ExistsJobEvaluationParams) (bool, error) {
 	row := q.db.QueryRow(ctx, existsJobEvaluation, arg.UserId, arg.JobId)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const existsSearchQueryByAnotherUser = `-- name: ExistsSearchQueryByAnotherUser :one
+SELECT EXISTS (
+    SELECT 1
+    FROM "SearchQueries"
+    WHERE "NormalizedHash" = $1
+    AND "Id" IN (
+        SELECT "SearchQueryId"
+        FROM "UserSearchQueries"
+        WHERE "UserId" != $2
+    )
+) AS "exists"
+`
+
+type ExistsSearchQueryByAnotherUserParams struct {
+	NormalizedHash string      `db:"NormalizedHash" json:"NormalizedHash"`
+	UserId         pgtype.UUID `db:"UserId" json:"UserId"`
+}
+
+func (q *Queries) ExistsSearchQueryByAnotherUser(ctx context.Context, arg ExistsSearchQueryByAnotherUserParams) (bool, error) {
+	row := q.db.QueryRow(ctx, existsSearchQueryByAnotherUser, arg.NormalizedHash, arg.UserId)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const existsSearchQueryByUserId = `-- name: ExistsSearchQueryByUserId :one
+SELECT EXISTS (
+    SELECT 1
+    FROM "UserSearchQueries"
+    WHERE "UserId" = $1
+) AS "exists"
+`
+
+func (q *Queries) ExistsSearchQueryByUserId(ctx context.Context, userid pgtype.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, existsSearchQueryByUserId, userid)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
@@ -683,6 +775,34 @@ func (q *Queries) GetQuestionById(ctx context.Context, id pgtype.UUID) (GetQuest
 	return i, err
 }
 
+const getSearchQueryByUserId = `-- name: GetSearchQueryByUserId :one
+SELECT sq."Id", sq."Query", sq."Keywords", sq."NormalizedHash", sq."Levels"
+FROM "SearchQueries" AS sq
+LEFT JOIN "UserSearchQueries" AS usq ON usq."SearchQueryId" = sq."Id"
+WHERE usq."UserId" = $1
+`
+
+type GetSearchQueryByUserIdRow struct {
+	Id             pgtype.UUID `db:"Id" json:"Id"`
+	Query          string      `db:"Query" json:"Query"`
+	Keywords       []string    `db:"Keywords" json:"Keywords"`
+	NormalizedHash string      `db:"NormalizedHash" json:"NormalizedHash"`
+	Levels         []string    `db:"Levels" json:"Levels"`
+}
+
+func (q *Queries) GetSearchQueryByUserId(ctx context.Context, userid pgtype.UUID) (GetSearchQueryByUserIdRow, error) {
+	row := q.db.QueryRow(ctx, getSearchQueryByUserId, userid)
+	var i GetSearchQueryByUserIdRow
+	err := row.Scan(
+		&i.Id,
+		&i.Query,
+		&i.Keywords,
+		&i.NormalizedHash,
+		&i.Levels,
+	)
+	return i, err
+}
+
 const getUserApplications = `-- name: GetUserApplications :many
 SELECT a."Status",
     a."Obs",
@@ -1001,6 +1121,35 @@ func (q *Queries) UpdateQuestionAnswer(ctx context.Context, arg UpdateQuestionAn
 	return err
 }
 
+const updateSearchQuery = `-- name: UpdateSearchQuery :exec
+UPDATE "SearchQueries" SET "Query" = $1, "Keywords" = $2, "NormalizedHash" = $3, "Levels" = $4, "LastModifiedBy" = $5, "LastModifiedAt" = $6
+FROM "UserSearchQueries" AS usq
+WHERE usq."UserId" = $7 AND usq."SearchQueryId" = "SearchQueries"."Id"
+`
+
+type UpdateSearchQueryParams struct {
+	Query          string             `db:"Query" json:"Query"`
+	Keywords       []string           `db:"Keywords" json:"Keywords"`
+	NormalizedHash string             `db:"NormalizedHash" json:"NormalizedHash"`
+	Levels         []string           `db:"Levels" json:"Levels"`
+	LastModifiedBy string             `db:"LastModifiedBy" json:"LastModifiedBy"`
+	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
+	UserId         pgtype.UUID        `db:"UserId" json:"UserId"`
+}
+
+func (q *Queries) UpdateSearchQuery(ctx context.Context, arg UpdateSearchQueryParams) error {
+	_, err := q.db.Exec(ctx, updateSearchQuery,
+		arg.Query,
+		arg.Keywords,
+		arg.NormalizedHash,
+		arg.Levels,
+		arg.LastModifiedBy,
+		arg.LastModifiedAt,
+		arg.UserId,
+	)
+	return err
+}
+
 const updateUser = `-- name: UpdateUser :exec
 UPDATE "AspNetUsers"
 SET "Name" = $2, "CPF" = $3, "Email" = $4
@@ -1078,5 +1227,20 @@ func (q *Queries) UpdateUserPreferences(ctx context.Context, arg UpdateUserPrefe
 		arg.LastModifiedBy,
 		arg.LastModifiedAt,
 	)
+	return err
+}
+
+const updateUserSearchQuery = `-- name: UpdateUserSearchQuery :exec
+UPDATE "UserSearchQueries" SET "SearchQueryId" = $2
+WHERE "UserId" = $1
+`
+
+type UpdateUserSearchQueryParams struct {
+	UserId        pgtype.UUID `db:"UserId" json:"UserId"`
+	SearchQueryId pgtype.UUID `db:"SearchQueryId" json:"SearchQueryId"`
+}
+
+func (q *Queries) UpdateUserSearchQuery(ctx context.Context, arg UpdateUserSearchQueryParams) error {
+	_, err := q.db.Exec(ctx, updateUserSearchQuery, arg.UserId, arg.SearchQueryId)
 	return err
 }
