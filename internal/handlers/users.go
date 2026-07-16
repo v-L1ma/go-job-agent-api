@@ -1,13 +1,13 @@
 package handlers
 
 import (
-	"slices"
 	"job-agent-api/internal/database"
 	"job-agent-api/internal/dto"
 	"job-agent-api/internal/helpers"
 	sqlc "job-agent-api/internal/queries"
 	"job-agent-api/internal/services"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -103,6 +103,17 @@ func SetUserPreferences(c *echo.Context, db *database.Database) error {
 		normalizedHash.WriteString(level)
 	}
 
+	var embeddingRequest strings.Builder
+	embeddingRequest.WriteString("Desired Skills: ")
+	embeddingRequest.WriteString(strings.Join(req.Skills, ", "))
+	embeddingRequest.WriteString("; Desired Levels: ")
+	embeddingRequest.WriteString(strings.Join(req.Levels, ", "))
+
+	embedding, err := services.GenerateEmbeddings(embeddingRequest.String())
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Erro ao gerar embedding: " + err.Error()})
+	}
+
 	if alreadyCreated {
 		currentSearchQueryId, err := db.Query.GetSearchQueryIdByUserId(c.Request().Context(), userID)
 		if err != nil {
@@ -119,13 +130,14 @@ func SetUserPreferences(c *echo.Context, db *database.Database) error {
 
 		if !usedByAnotherUser {
 			err := db.Query.UpdateSearchQuery(c.Request().Context(), sqlc.UpdateSearchQueryParams{
-				Query: query.String(),
-				Levels: req.Levels,
-				Keywords: req.Skills,
-				NormalizedHash: normalizedHash.String(),
-				LastModifiedBy: userID.String(),
-				LastModifiedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
-				UserId: userID,
+				Query:                query.String(),
+				Levels:               req.Levels,
+				Keywords:             req.Skills,
+				NormalizedHash:       normalizedHash.String(),
+				SearchQueryEmbedding: embedding,
+				LastModifiedBy:       userID.String(),
+				LastModifiedAt:       pgtype.Timestamptz{Time: time.Now(), Valid: true},
+				UserId:               userID,
 			})
 			if err != nil {
 				return c.JSON(http.StatusInternalServerError, map[string]string{"error update": err.Error()})
@@ -140,6 +152,7 @@ func SetUserPreferences(c *echo.Context, db *database.Database) error {
 			NormalizedHash: normalizedHash.String(),
 			Area:             "",
 			Levels:           req.Levels,
+			SearchQueryEmbedding: embedding,
 			Active:           true,
 			CreatedBy:      userID.String(),
 			CreatedAt:      pgtype.Timestamptz{Time: time.Now(), Valid: true},
@@ -167,6 +180,7 @@ func SetUserPreferences(c *echo.Context, db *database.Database) error {
 		NormalizedHash: normalizedHash.String(),
 		Area:             "",
 		Levels:           req.Levels,
+		SearchQueryEmbedding: embedding,
 		Active:           true,
 		CreatedBy:      userID.String(),
 		CreatedAt:      pgtype.Timestamptz{Time: time.Now(), Valid: true},

@@ -87,20 +87,22 @@ type GeneratedCvsNew struct {
 }
 
 type Job struct {
-	Id             pgtype.UUID        `db:"Id" json:"Id"`
-	PlataformJobId string             `db:"PlataformJobId" json:"PlataformJobId"`
-	Title          string             `db:"Title" json:"Title"`
-	Description    string             `db:"Description" json:"Description"`
-	Url            string             `db:"Url" json:"Url"`
-	IsApplied      bool               `db:"IsApplied" json:"IsApplied"`
-	Status         string             `db:"Status" json:"Status"`
-	Active         bool               `db:"Active" json:"Active"`
-	CreatedBy      string             `db:"CreatedBy" json:"CreatedBy"`
-	CreatedAt      pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
-	LastModifiedBy string             `db:"LastModifiedBy" json:"LastModifiedBy"`
-	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
-	Platform       string             `db:"Platform" json:"Platform"`
-	Company        string             `db:"Company" json:"Company"`
+	Id                   pgtype.UUID        `db:"Id" json:"Id"`
+	PlataformJobId       string             `db:"PlataformJobId" json:"PlataformJobId"`
+	Title                string             `db:"Title" json:"Title"`
+	Description          string             `db:"Description" json:"Description"`
+	Url                  string             `db:"Url" json:"Url"`
+	IsApplied            bool               `db:"IsApplied" json:"IsApplied"`
+	Status               string             `db:"Status" json:"Status"`
+	Active               bool               `db:"Active" json:"Active"`
+	CreatedBy            string             `db:"CreatedBy" json:"CreatedBy"`
+	CreatedAt            pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+	LastModifiedBy       string             `db:"LastModifiedBy" json:"LastModifiedBy"`
+	LastModifiedAt       pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
+	Platform             string             `db:"Platform" json:"Platform"`
+	Company              string             `db:"Company" json:"Company"`
+	TitleEmbedding       interface{}        `db:"TitleEmbedding" json:"TitleEmbedding"`
+	DescriptionEmbedding interface{}        `db:"DescriptionEmbedding" json:"DescriptionEmbedding"`
 }
 
 type JobEvaluation struct {
@@ -139,18 +141,19 @@ type Question struct {
 }
 
 type SearchQuery struct {
-	Id             pgtype.UUID        `db:"Id" json:"Id"`
-	Query          string             `db:"Query" json:"Query"`
-	Keywords       []string           `db:"Keywords" json:"Keywords"`
-	Area           string             `db:"Area" json:"Area"`
-	NormalizedHash string             `db:"NormalizedHash" json:"NormalizedHash"`
-	Active         bool               `db:"Active" json:"Active"`
-	CreatedBy      string             `db:"CreatedBy" json:"CreatedBy"`
-	CreatedAt      pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
-	LastModifiedBy string             `db:"LastModifiedBy" json:"LastModifiedBy"`
-	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
-	LastExecutedAt pgtype.Timestamptz `db:"LastExecutedAt" json:"LastExecutedAt"`
-	Levels         []string           `db:"Levels" json:"Levels"`
+	Id                   pgtype.UUID        `db:"Id" json:"Id"`
+	Query                string             `db:"Query" json:"Query"`
+	Keywords             []string           `db:"Keywords" json:"Keywords"`
+	Area                 string             `db:"Area" json:"Area"`
+	NormalizedHash       string             `db:"NormalizedHash" json:"NormalizedHash"`
+	Active               bool               `db:"Active" json:"Active"`
+	CreatedBy            string             `db:"CreatedBy" json:"CreatedBy"`
+	CreatedAt            pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+	LastModifiedBy       string             `db:"LastModifiedBy" json:"LastModifiedBy"`
+	LastModifiedAt       pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
+	LastExecutedAt       pgtype.Timestamptz `db:"LastExecutedAt" json:"LastExecutedAt"`
+	Levels               []string           `db:"Levels" json:"Levels"`
+	SearchQueryEmbedding interface{}        `db:"SearchQueryEmbedding" json:"SearchQueryEmbedding"`
 }
 
 type UserCv struct {

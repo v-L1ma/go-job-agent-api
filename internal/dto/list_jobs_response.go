@@ -20,4 +20,5 @@ type Job struct {
 	LastModifiedAt string			  `json:"lastModifiedAt"`
 	Platform       string             `json:"platform"`
 	Company        string             `json:"company"`
+	Score 		   int32            `json:"score"`
 }

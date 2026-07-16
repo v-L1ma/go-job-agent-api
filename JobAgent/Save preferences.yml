@@ -1,0 +1,24 @@
+info:
+  name: Save preferences
+  type: http
+
+http:
+  method: POST
+  url: http://localhost:1323/api/v1/preferences
+  body:
+    type: json
+    data: |-
+      {
+        "skills":["GO", "Golang", "React", "Next.js"],
+        "levels":["Junior"]
+      }
+  auth:
+    type: bearer
+    token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiMjg5YzY1MTUtNThlNC00YTM2LWIxODMtOTcyOTQ4NmZiYWI2IiwiZW1haWwiOiJ0ZXN0ZUB0ZXN0ZS5jb20iLCJleHAiOjE3ODQxNjY3ODAsImlhdCI6MTc4NDE2NTg4MH0.TPM5znAYygG8ldoOphYpPtaHeUbvzB6N_6ZAB-E5WRQ
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+​

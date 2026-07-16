@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS public."Jobs" (
+create table public."Jobs" (
   "Id" uuid not null,
   "PlataformJobId" text not null,
   "Title" text not null,
@@ -13,11 +13,13 @@ CREATE TABLE IF NOT EXISTS public."Jobs" (
   "LastModifiedAt" timestamp with time zone not null,
   "Platform" text not null default ''::text,
   "Company" text not null default ''::text,
-  constraint PK_Jobs primary key (Id)
-);
+  "TitleEmbedding" public.vector null,
+  "DescriptionEmbedding" public.vector null,
+  constraint PK_Jobs primary key ("Id")
+) TABLESPACE pg_default;
 
-CREATE TABLE IF NOT EXISTS public."SearchQueries" (
-  "Id" uuid not null default gen_random_uuid(),
+create table public."SearchQueries" (
+  "Id" uuid not null default gen_random_uuid (),
   "Query" text not null,
   "Keywords" text[] not null,
   "Area" text not null,
@@ -29,10 +31,11 @@ CREATE TABLE IF NOT EXISTS public."SearchQueries" (
   "LastModifiedAt" timestamp with time zone not null,
   "LastExecutedAt" timestamp with time zone not null default '-infinity'::timestamp with time zone,
   "Levels" text[] not null default array[]::text[],
-  constraint PK_SearchQueries primary key (Id)
-);
+  "SearchQueryEmbedding" public.vector null,
+  constraint PK_SearchQueries primary key ("Id")
+) TABLESPACE pg_default;
 
-create index IF not exists IX_SearchQueries_NormalizedHash on public."SearchQueries" using btree (NormalizedHash);
+create index IF not exists "IX_SearchQueries_NormalizedHash" on public."SearchQueries" using btree ("NormalizedHash") TABLESPACE pg_default;
 
 CREATE TABLE IF NOT EXISTS public."UserCvs" (
   "Id" uuid not null default gen_random_uuid(),

@@ -1,0 +1,16 @@
+info:
+  name: Get Jobs
+  type: http
+
+http:
+  method: GET
+  url: http://localhost:1323/api/v1/jobs
+  auth:
+    type: bearer
+    token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiMjg5YzY1MTUtNThlNC00YTM2LWIxODMtOTcyOTQ4NmZiYWI2IiwiZW1haWwiOiJ0ZXN0ZUB0ZXN0ZS5jb20iLCJleHAiOjE3ODQxNjk3NjQsImlhdCI6MTc4NDE2ODg2NH0.9RWuN-pmORs4UbuwlRPzC5E_7p5w7QlPoVN-qoviFz4
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

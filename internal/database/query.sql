@@ -1,24 +1,32 @@
 -- name: GetJobs :many
-SELECT DISTINCT j.*
+SELECT
+    j.*,
+    (
+        (1 - (j."TitleEmbedding" <=> sq."SearchQueryEmbedding")) * 0.7 +
+        (1 - (j."DescriptionEmbedding" <=> sq."SearchQueryEmbedding")) * 0.3
+    ) AS similarity
 FROM "Jobs" j
-WHERE EXISTS (
-    SELECT 1
-    FROM "UserSearchQueries" usq
-    JOIN "SearchQueries" sq
-        ON sq."Id" = usq."SearchQueryId"
-    CROSS JOIN LATERAL unnest(sq."Keywords") AS keyword
-    WHERE usq."UserId" = $1
-      AND j."Title" ILIKE '%' || keyword || '%'
-) AND NOT EXISTS (
+JOIN "UserSearchQueries" usq
+    ON usq."UserId" = $1
+JOIN "SearchQueries" sq
+    ON sq."Id" = usq."SearchQueryId"
+WHERE NOT EXISTS (
     SELECT 1
     FROM "Applications" a
     WHERE a."JobId" = j."Id"
-) AND (
-    sqlc.narg('cursor')::timestamptz IS NULL
-    OR
-    j."CreatedAt" < sqlc.narg('cursor')::timestamptz
 )
-ORDER BY "CreatedAt" DESC
+AND (
+    sqlc.narg('cursor')::timestamptz IS NULL
+    OR j."CreatedAt" < sqlc.narg('cursor')::timestamptz
+)
+AND (
+    sqlc.narg('min_similarity')::float IS NULL
+    OR (
+        (1 - (j."TitleEmbedding" <=> sq."SearchQueryEmbedding")) * 0.7 +
+        (1 - (j."DescriptionEmbedding" <=> sq."SearchQueryEmbedding")) * 0.3
+    ) >= sqlc.narg('min_similarity')::float
+)
+ORDER BY similarity DESC, j."CreatedAt" DESC
 LIMIT $2;
 
 -- name: GetJobById :one
@@ -271,13 +279,13 @@ UPDATE "UserSearchQueries" SET "SearchQueryId" = $2
 WHERE "UserId" = $1;
 
 -- name: CreateSearchQuery :one
-INSERT INTO "SearchQueries" ("Query", "Keywords", "NormalizedHash", "Area", "Levels", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt")
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING "Id";
+INSERT INTO "SearchQueries" ("Query", "Keywords", "NormalizedHash", "Area", "Levels", "Active", "SearchQueryEmbedding", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt")
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING "Id";
 
 -- name: UpdateSearchQuery :exec
-UPDATE "SearchQueries" SET "Query" = $1, "Keywords" = $2, "NormalizedHash" = $3, "Levels" = $4, "LastModifiedBy" = $5, "LastModifiedAt" = $6
+UPDATE "SearchQueries" SET "Query" = $1, "Keywords" = $2, "NormalizedHash" = $3, "Levels" = $4, "SearchQueryEmbedding" = $5, "LastModifiedBy" = $6, "LastModifiedAt" = $7
 FROM "UserSearchQueries" AS usq
-WHERE usq."UserId" = $7 AND usq."SearchQueryId" = "SearchQueries"."Id";
+WHERE usq."UserId" = $8 AND usq."SearchQueryId" = "SearchQueries"."Id";
 
 -- name: ExistsSearchQueryByUserId :one
 SELECT EXISTS (

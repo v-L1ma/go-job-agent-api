@@ -124,21 +124,22 @@ func (q *Queries) CreateQuestion(ctx context.Context, arg CreateQuestionParams) 
 }
 
 const createSearchQuery = `-- name: CreateSearchQuery :one
-INSERT INTO "SearchQueries" ("Query", "Keywords", "NormalizedHash", "Area", "Levels", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt")
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING "Id"
+INSERT INTO "SearchQueries" ("Query", "Keywords", "NormalizedHash", "Area", "Levels", "Active", "SearchQueryEmbedding", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt")
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING "Id"
 `
 
 type CreateSearchQueryParams struct {
-	Query          string             `db:"Query" json:"Query"`
-	Keywords       []string           `db:"Keywords" json:"Keywords"`
-	NormalizedHash string             `db:"NormalizedHash" json:"NormalizedHash"`
-	Area           string             `db:"Area" json:"Area"`
-	Levels         []string           `db:"Levels" json:"Levels"`
-	Active         bool               `db:"Active" json:"Active"`
-	CreatedBy      string             `db:"CreatedBy" json:"CreatedBy"`
-	CreatedAt      pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
-	LastModifiedBy string             `db:"LastModifiedBy" json:"LastModifiedBy"`
-	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
+	Query                string             `db:"Query" json:"Query"`
+	Keywords             []string           `db:"Keywords" json:"Keywords"`
+	NormalizedHash       string             `db:"NormalizedHash" json:"NormalizedHash"`
+	Area                 string             `db:"Area" json:"Area"`
+	Levels               []string           `db:"Levels" json:"Levels"`
+	Active               bool               `db:"Active" json:"Active"`
+	SearchQueryEmbedding interface{}        `db:"SearchQueryEmbedding" json:"SearchQueryEmbedding"`
+	CreatedBy            string             `db:"CreatedBy" json:"CreatedBy"`
+	CreatedAt            pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+	LastModifiedBy       string             `db:"LastModifiedBy" json:"LastModifiedBy"`
+	LastModifiedAt       pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
 }
 
 func (q *Queries) CreateSearchQuery(ctx context.Context, arg CreateSearchQueryParams) (pgtype.UUID, error) {
@@ -149,6 +150,7 @@ func (q *Queries) CreateSearchQuery(ctx context.Context, arg CreateSearchQueryPa
 		arg.Area,
 		arg.Levels,
 		arg.Active,
+		arg.SearchQueryEmbedding,
 		arg.CreatedBy,
 		arg.CreatedAt,
 		arg.LastModifiedBy,
@@ -605,44 +607,78 @@ func (q *Queries) GetJobById(ctx context.Context, id pgtype.UUID) (GetJobByIdRow
 }
 
 const getJobs = `-- name: GetJobs :many
-SELECT DISTINCT j."Id", j."PlataformJobId", j."Title", j."Description", j."Url", j."IsApplied", j."Status", j."Active", j."CreatedBy", j."CreatedAt", j."LastModifiedBy", j."LastModifiedAt", j."Platform", j."Company"
+SELECT
+    j."Id", j."PlataformJobId", j."Title", j."Description", j."Url", j."IsApplied", j."Status", j."Active", j."CreatedBy", j."CreatedAt", j."LastModifiedBy", j."LastModifiedAt", j."Platform", j."Company", j."TitleEmbedding", j."DescriptionEmbedding",
+    (
+        (1 - (j."TitleEmbedding" <=> sq."SearchQueryEmbedding")) * 0.7 +
+        (1 - (j."DescriptionEmbedding" <=> sq."SearchQueryEmbedding")) * 0.3
+    ) AS similarity
 FROM "Jobs" j
-WHERE EXISTS (
-    SELECT 1
-    FROM "UserSearchQueries" usq
-    JOIN "SearchQueries" sq
-        ON sq."Id" = usq."SearchQueryId"
-    CROSS JOIN LATERAL unnest(sq."Keywords") AS keyword
-    WHERE usq."UserId" = $1
-      AND j."Title" ILIKE '%' || keyword || '%'
-) AND NOT EXISTS (
+JOIN "UserSearchQueries" usq
+    ON usq."UserId" = $1
+JOIN "SearchQueries" sq
+    ON sq."Id" = usq."SearchQueryId"
+WHERE NOT EXISTS (
     SELECT 1
     FROM "Applications" a
     WHERE a."JobId" = j."Id"
-) AND (
-    $3::timestamptz IS NULL
-    OR
-    j."CreatedAt" < $3::timestamptz
 )
-ORDER BY "CreatedAt" DESC
+AND (
+    $3::timestamptz IS NULL
+    OR j."CreatedAt" < $3::timestamptz
+)
+AND (
+    $4::float IS NULL
+    OR (
+        (1 - (j."TitleEmbedding" <=> sq."SearchQueryEmbedding")) * 0.7 +
+        (1 - (j."DescriptionEmbedding" <=> sq."SearchQueryEmbedding")) * 0.3
+    ) >= $4::float
+)
+ORDER BY similarity DESC, j."CreatedAt" DESC
 LIMIT $2
 `
 
 type GetJobsParams struct {
-	UserId pgtype.UUID        `db:"UserId" json:"UserId"`
-	Limit  int32              `db:"limit" json:"limit"`
-	Cursor pgtype.Timestamptz `db:"cursor" json:"cursor"`
+	UserId        pgtype.UUID        `db:"UserId" json:"UserId"`
+	Limit         int32              `db:"limit" json:"limit"`
+	Cursor        pgtype.Timestamptz `db:"cursor" json:"cursor"`
+	MinSimilarity pgtype.Float8      `db:"min_similarity" json:"min_similarity"`
 }
 
-func (q *Queries) GetJobs(ctx context.Context, arg GetJobsParams) ([]Job, error) {
-	rows, err := q.db.Query(ctx, getJobs, arg.UserId, arg.Limit, arg.Cursor)
+type GetJobsRow struct {
+	Id                   pgtype.UUID        `db:"Id" json:"Id"`
+	PlataformJobId       string             `db:"PlataformJobId" json:"PlataformJobId"`
+	Title                string             `db:"Title" json:"Title"`
+	Description          string             `db:"Description" json:"Description"`
+	Url                  string             `db:"Url" json:"Url"`
+	IsApplied            bool               `db:"IsApplied" json:"IsApplied"`
+	Status               string             `db:"Status" json:"Status"`
+	Active               bool               `db:"Active" json:"Active"`
+	CreatedBy            string             `db:"CreatedBy" json:"CreatedBy"`
+	CreatedAt            pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+	LastModifiedBy       string             `db:"LastModifiedBy" json:"LastModifiedBy"`
+	LastModifiedAt       pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
+	Platform             string             `db:"Platform" json:"Platform"`
+	Company              string             `db:"Company" json:"Company"`
+	TitleEmbedding       interface{}        `db:"TitleEmbedding" json:"TitleEmbedding"`
+	DescriptionEmbedding interface{}        `db:"DescriptionEmbedding" json:"DescriptionEmbedding"`
+	Similarity           int32              `db:"similarity" json:"similarity"`
+}
+
+func (q *Queries) GetJobs(ctx context.Context, arg GetJobsParams) ([]GetJobsRow, error) {
+	rows, err := q.db.Query(ctx, getJobs,
+		arg.UserId,
+		arg.Limit,
+		arg.Cursor,
+		arg.MinSimilarity,
+	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Job
+	var items []GetJobsRow
 	for rows.Next() {
-		var i Job
+		var i GetJobsRow
 		if err := rows.Scan(
 			&i.Id,
 			&i.PlataformJobId,
@@ -658,6 +694,9 @@ func (q *Queries) GetJobs(ctx context.Context, arg GetJobsParams) ([]Job, error)
 			&i.LastModifiedAt,
 			&i.Platform,
 			&i.Company,
+			&i.TitleEmbedding,
+			&i.DescriptionEmbedding,
+			&i.Similarity,
 		); err != nil {
 			return nil, err
 		}
@@ -1130,19 +1169,20 @@ func (q *Queries) UpdateQuestionAnswer(ctx context.Context, arg UpdateQuestionAn
 }
 
 const updateSearchQuery = `-- name: UpdateSearchQuery :exec
-UPDATE "SearchQueries" SET "Query" = $1, "Keywords" = $2, "NormalizedHash" = $3, "Levels" = $4, "LastModifiedBy" = $5, "LastModifiedAt" = $6
+UPDATE "SearchQueries" SET "Query" = $1, "Keywords" = $2, "NormalizedHash" = $3, "Levels" = $4, "SearchQueryEmbedding" = $5, "LastModifiedBy" = $6, "LastModifiedAt" = $7
 FROM "UserSearchQueries" AS usq
-WHERE usq."UserId" = $7 AND usq."SearchQueryId" = "SearchQueries"."Id"
+WHERE usq."UserId" = $8 AND usq."SearchQueryId" = "SearchQueries"."Id"
 `
 
 type UpdateSearchQueryParams struct {
-	Query          string             `db:"Query" json:"Query"`
-	Keywords       []string           `db:"Keywords" json:"Keywords"`
-	NormalizedHash string             `db:"NormalizedHash" json:"NormalizedHash"`
-	Levels         []string           `db:"Levels" json:"Levels"`
-	LastModifiedBy string             `db:"LastModifiedBy" json:"LastModifiedBy"`
-	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
-	UserId         pgtype.UUID        `db:"UserId" json:"UserId"`
+	Query                string             `db:"Query" json:"Query"`
+	Keywords             []string           `db:"Keywords" json:"Keywords"`
+	NormalizedHash       string             `db:"NormalizedHash" json:"NormalizedHash"`
+	Levels               []string           `db:"Levels" json:"Levels"`
+	SearchQueryEmbedding interface{}        `db:"SearchQueryEmbedding" json:"SearchQueryEmbedding"`
+	LastModifiedBy       string             `db:"LastModifiedBy" json:"LastModifiedBy"`
+	LastModifiedAt       pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
+	UserId               pgtype.UUID        `db:"UserId" json:"UserId"`
 }
 
 func (q *Queries) UpdateSearchQuery(ctx context.Context, arg UpdateSearchQueryParams) error {
@@ -1151,6 +1191,7 @@ func (q *Queries) UpdateSearchQuery(ctx context.Context, arg UpdateSearchQueryPa
 		arg.Keywords,
 		arg.NormalizedHash,
 		arg.Levels,
+		arg.SearchQueryEmbedding,
 		arg.LastModifiedBy,
 		arg.LastModifiedAt,
 		arg.UserId,

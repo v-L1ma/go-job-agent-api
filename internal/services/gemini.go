@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"google.golang.org/genai"
@@ -147,4 +149,41 @@ func debugPrint[T any](r *T) {
 	}
 
 	fmt.Println(string(response))
+}
+
+func GenerateEmbeddings(input string) (string, error) {
+	if client == nil {
+		return "", errors.New("gemini client not initialized")
+	}
+
+	ctx := context.Background()
+
+	contents := []*genai.Content{
+		genai.NewContentFromText(input, genai.RoleUser),
+	}
+	result, err := client.Models.EmbedContent(ctx,
+		"gemini-embedding-2",
+		contents,
+		nil,
+	)
+	if err != nil {
+		return "", fmt.Errorf("gemini embed content: %w", err)
+	}
+
+	if len(result.Embeddings) == 0 {
+		return "", errors.New("no embeddings returned")
+	}
+
+	values := result.Embeddings[0].Values
+	var buf strings.Builder
+	buf.WriteByte('[')
+	for i, v := range values {
+		if i > 0 {
+			buf.WriteByte(',')
+		}
+		buf.WriteString(strconv.FormatFloat(float64(v), 'f', -1, 32))
+	}
+	buf.WriteByte(']')
+
+	return buf.String(), nil
 }

@@ -14,7 +14,7 @@ import (
 	"github.com/labstack/echo/v5"
 )
 
-func toJobDTO(job sqlc.Job) dto.Job {
+func toJobDTO(job sqlc.GetJobsRow) dto.Job {
 	return dto.Job{
 		Id:             job.Id.String(),
 		PlataformJobId: job.PlataformJobId,
@@ -30,10 +30,11 @@ func toJobDTO(job sqlc.Job) dto.Job {
 		LastModifiedAt: job.LastModifiedAt.Time.Format(time.RFC3339),
 		Platform:       job.Platform,
 		Company:        job.Company,
+		Score: 			job.Similarity,
 	}
 }
 
-func toJobListDTO(jobs []sqlc.Job) []dto.Job {
+func toJobListDTO(jobs []sqlc.GetJobsRow) []dto.Job {
 	result := make([]dto.Job, len(jobs))
 	for i, j := range jobs {
 		result[i] = toJobDTO(j)
