@@ -29,6 +29,20 @@ AND (
 ORDER BY similarity DESC, j."CreatedAt" DESC
 LIMIT $2;
 
+-- name: GetJobsWithoutEmbeddings :many
+SELECT j."Id",
+  j."Title",
+  j."Description"
+FROM "Jobs" j
+WHERE j."TitleEmbedding" IS NULL
+ORDER BY "CreatedAt" DESC
+LIMIT 1000;
+
+-- name: AddEmbeddings :exec
+UPDATE "Jobs"
+SET "TitleEmbedding" = $1, "DescriptionEmbedding" = $2
+WHERE "Id" = $3;
+
 -- name: GetJobById :one
 SELECT "Id", 
     "Title", 

@@ -11,6 +11,23 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const addEmbeddings = `-- name: AddEmbeddings :exec
+UPDATE "Jobs"
+SET "TitleEmbedding" = $1, "DescriptionEmbedding" = $2
+WHERE "Id" = $3
+`
+
+type AddEmbeddingsParams struct {
+	TitleEmbedding       interface{} `db:"TitleEmbedding" json:"TitleEmbedding"`
+	DescriptionEmbedding interface{} `db:"DescriptionEmbedding" json:"DescriptionEmbedding"`
+	Id                   pgtype.UUID `db:"Id" json:"Id"`
+}
+
+func (q *Queries) AddEmbeddings(ctx context.Context, arg AddEmbeddingsParams) error {
+	_, err := q.db.Exec(ctx, addEmbeddings, arg.TitleEmbedding, arg.DescriptionEmbedding, arg.Id)
+	return err
+}
+
 const createApplication = `-- name: CreateApplication :exec
 INSERT INTO "Applications" ("UserId", "JobId", "Status", "Obs", "Platform", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt")
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -698,6 +715,42 @@ func (q *Queries) GetJobs(ctx context.Context, arg GetJobsParams) ([]GetJobsRow,
 			&i.DescriptionEmbedding,
 			&i.Similarity,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getJobsWithoutEmbeddings = `-- name: GetJobsWithoutEmbeddings :many
+SELECT j."Id",
+  j."Title",
+  j."Description"
+FROM "Jobs" j
+WHERE j."TitleEmbedding" IS NULL
+ORDER BY "CreatedAt" DESC
+LIMIT 1000
+`
+
+type GetJobsWithoutEmbeddingsRow struct {
+	Id          pgtype.UUID `db:"Id" json:"Id"`
+	Title       string      `db:"Title" json:"Title"`
+	Description string      `db:"Description" json:"Description"`
+}
+
+func (q *Queries) GetJobsWithoutEmbeddings(ctx context.Context) ([]GetJobsWithoutEmbeddingsRow, error) {
+	rows, err := q.db.Query(ctx, getJobsWithoutEmbeddings)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetJobsWithoutEmbeddingsRow
+	for rows.Next() {
+		var i GetJobsWithoutEmbeddingsRow
+		if err := rows.Scan(&i.Id, &i.Title, &i.Description); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

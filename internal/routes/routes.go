@@ -60,6 +60,10 @@ func RegisterRoutes(e *echo.Echo, db *database.Database) {
 		return handlers.ResetPassword(c, db)
 	})
 
+	api.POST("/sync", func(c *echo.Context) error {
+		return handlers.SyncJobsEmbeddings(c, db)
+	})
+
 	private := api.Group("")
 	private.Use(middlewares.JWTMiddleware)
 

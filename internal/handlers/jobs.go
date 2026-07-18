@@ -155,3 +155,36 @@ func RateJob (c *echo.Context, db *database.Database) error{
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "Muito obrigado pela sua avaliação!"})
 }
+
+func SyncJobsEmbeddings(c *echo.Context, db *database.Database) error {
+	jobs, err := db.Query.GetJobsWithoutEmbeddings(c.Request().Context())
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	for _, job := range jobs {
+		// Process each job to generate embeddings
+		titleEmbedding, err := services.GenerateEmbeddings(job.Title)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Erro ao gerar embedding: " + err.Error()})
+		}
+
+		descriptionEmbedding, err := services.GenerateEmbeddings(job.Title)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Erro ao gerar embedding: " + err.Error()})
+		}
+
+		err = db.Query.AddEmbeddings(c.Request().Context(), sqlc.AddEmbeddingsParams{
+			Id: job.Id,
+			TitleEmbedding: titleEmbedding,
+			DescriptionEmbedding: descriptionEmbedding,
+		})
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Erro ao salvar embeddings: " + err.Error()})
+		}
+
+		fmt.Println("Embedding salvo para: ", job.Title)
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"message": "Sync completed successfully!"})
+}
