@@ -151,9 +151,13 @@ func debugPrint[T any](r *T) {
 	fmt.Println(string(response))
 }
 
-func GenerateEmbeddings(input string) (string, error) {
+func GenerateEmbeddings(input string, model string) (string, error) {
 	if client == nil {
 		return "", errors.New("gemini client not initialized")
+	}
+
+	if input == "" {
+		return "", errors.New("input text is empty")
 	}
 
 	ctx := context.Background()
@@ -162,7 +166,7 @@ func GenerateEmbeddings(input string) (string, error) {
 		genai.NewContentFromText(input, genai.RoleUser),
 	}
 	result, err := client.Models.EmbedContent(ctx,
-		"gemini-embedding-2",
+		model,
 		contents,
 		nil,
 	)

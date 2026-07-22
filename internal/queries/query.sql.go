@@ -624,42 +624,53 @@ func (q *Queries) GetJobById(ctx context.Context, id pgtype.UUID) (GetJobByIdRow
 }
 
 const getJobs = `-- name: GetJobs :many
-SELECT
-    j."Id", j."PlataformJobId", j."Title", j."Description", j."Url", j."IsApplied", j."Status", j."Active", j."CreatedBy", j."CreatedAt", j."LastModifiedBy", j."LastModifiedAt", j."Platform", j."Company", j."TitleEmbedding", j."DescriptionEmbedding",
-    (
-        (1 - (j."TitleEmbedding" <=> sq."SearchQueryEmbedding")) * 0.7 +
-        (1 - (j."DescriptionEmbedding" <=> sq."SearchQueryEmbedding")) * 0.3
-    ) AS similarity
-FROM "Jobs" j
-JOIN "UserSearchQueries" usq
-    ON usq."UserId" = $1
-JOIN "SearchQueries" sq
-    ON sq."Id" = usq."SearchQueryId"
-WHERE NOT EXISTS (
-    SELECT 1
-    FROM "Applications" a
-    WHERE a."JobId" = j."Id"
+WITH jobs_with_sim AS (
+    SELECT
+        j."Id", j."PlataformJobId", j."Title", j."Description", j."Url", j."IsApplied", j."Status", j."Active", j."CreatedBy", j."CreatedAt", j."LastModifiedBy", j."LastModifiedAt", j."Platform", j."Company", j."TitleEmbedding", j."DescriptionEmbedding",
+        (
+            COALESCE((1 - (j."TitleEmbedding" <=> sq."SearchQueryEmbedding")) * 0.7, 0) +
+            COALESCE((1 - (j."DescriptionEmbedding" <=> sq."SearchQueryEmbedding")) * 0.3, 0)
+        ) AS similarity
+    FROM "Jobs" j
+    JOIN "UserSearchQueries" usq
+        ON usq."UserId" = $1
+    JOIN "SearchQueries" sq
+        ON sq."Id" = usq."SearchQueryId"
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM "Applications" a
+        WHERE a."JobId" = j."Id"
+    )
+)
+SELECT "Id", "PlataformJobId", "Title", "Description", "Url", "IsApplied", "Status", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt", "Platform", "Company", "TitleEmbedding", "DescriptionEmbedding", similarity
+FROM jobs_with_sim
+WHERE (
+    $3::float IS NULL
+    OR (similarity, "CreatedAt", "Id") < ($3::float, $4::timestamptz, $5::uuid)
 )
 AND (
-    $3::timestamptz IS NULL
-    OR j."CreatedAt" < $3::timestamptz
+    $6::float IS NULL
+    OR similarity >= $6::float
 )
-AND (
-    $4::float IS NULL
-    OR (
-        (1 - (j."TitleEmbedding" <=> sq."SearchQueryEmbedding")) * 0.7 +
-        (1 - (j."DescriptionEmbedding" <=> sq."SearchQueryEmbedding")) * 0.3
-    ) >= $4::float
+AND NOT EXISTS (
+    SELECT 1 
+    FROM "JobEvaluations" je
+    WHERE je."UserId" = $1
+     AND je."JobId" = jobs_with_sim."Id"
+     AND je."Liked" = false
+
 )
-ORDER BY similarity DESC, j."CreatedAt" DESC
+ORDER BY similarity DESC, "CreatedAt" DESC, "Id" DESC
 LIMIT $2
 `
 
 type GetJobsParams struct {
-	UserId        pgtype.UUID        `db:"UserId" json:"UserId"`
-	Limit         int32              `db:"limit" json:"limit"`
-	Cursor        pgtype.Timestamptz `db:"cursor" json:"cursor"`
-	MinSimilarity pgtype.Float8      `db:"min_similarity" json:"min_similarity"`
+	UserId           pgtype.UUID        `db:"UserId" json:"UserId"`
+	Limit            int32              `db:"limit" json:"limit"`
+	CursorSimilarity pgtype.Float8      `db:"cursor_similarity" json:"cursor_similarity"`
+	CursorCreatedAt  pgtype.Timestamptz `db:"cursor_created_at" json:"cursor_created_at"`
+	CursorID         pgtype.UUID        `db:"cursor_id" json:"cursor_id"`
+	MinSimilarity    pgtype.Float8      `db:"min_similarity" json:"min_similarity"`
 }
 
 type GetJobsRow struct {
@@ -679,14 +690,16 @@ type GetJobsRow struct {
 	Company              string             `db:"Company" json:"Company"`
 	TitleEmbedding       interface{}        `db:"TitleEmbedding" json:"TitleEmbedding"`
 	DescriptionEmbedding interface{}        `db:"DescriptionEmbedding" json:"DescriptionEmbedding"`
-	Similarity           int32              `db:"similarity" json:"similarity"`
+	Similarity           float64            `db:"similarity" json:"similarity"`
 }
 
 func (q *Queries) GetJobs(ctx context.Context, arg GetJobsParams) ([]GetJobsRow, error) {
 	rows, err := q.db.Query(ctx, getJobs,
 		arg.UserId,
 		arg.Limit,
-		arg.Cursor,
+		arg.CursorSimilarity,
+		arg.CursorCreatedAt,
+		arg.CursorID,
 		arg.MinSimilarity,
 	)
 	if err != nil {

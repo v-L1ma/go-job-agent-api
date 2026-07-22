@@ -1,32 +1,41 @@
 -- name: GetJobs :many
-SELECT
-    j.*,
-    (
-        (1 - (j."TitleEmbedding" <=> sq."SearchQueryEmbedding")) * 0.7 +
-        (1 - (j."DescriptionEmbedding" <=> sq."SearchQueryEmbedding")) * 0.3
-    ) AS similarity
-FROM "Jobs" j
-JOIN "UserSearchQueries" usq
-    ON usq."UserId" = $1
-JOIN "SearchQueries" sq
-    ON sq."Id" = usq."SearchQueryId"
-WHERE NOT EXISTS (
-    SELECT 1
-    FROM "Applications" a
-    WHERE a."JobId" = j."Id"
+WITH jobs_with_sim AS (
+    SELECT
+        j."Id", j."PlataformJobId", j."Title", j."Description", j."Url", j."IsApplied", j."Status", j."Active", j."CreatedBy", j."CreatedAt", j."LastModifiedBy", j."LastModifiedAt", j."Platform", j."Company", j."TitleEmbedding", j."DescriptionEmbedding",
+        (
+            COALESCE((1 - (j."TitleEmbedding" <=> sq."SearchQueryEmbedding")) * 0.7, 0) +
+            COALESCE((1 - (j."DescriptionEmbedding" <=> sq."SearchQueryEmbedding")) * 0.3, 0)
+        ) AS similarity
+    FROM "Jobs" j
+    JOIN "UserSearchQueries" usq
+        ON usq."UserId" = $1
+    JOIN "SearchQueries" sq
+        ON sq."Id" = usq."SearchQueryId"
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM "Applications" a
+        WHERE a."JobId" = j."Id"
+    )
 )
-AND (
-    sqlc.narg('cursor')::timestamptz IS NULL
-    OR j."CreatedAt" < sqlc.narg('cursor')::timestamptz
+SELECT *
+FROM jobs_with_sim
+WHERE (
+    sqlc.narg('cursor_similarity')::float IS NULL
+    OR (similarity, "CreatedAt", "Id") < (sqlc.narg('cursor_similarity')::float, sqlc.narg('cursor_created_at')::timestamptz, sqlc.narg('cursor_id')::uuid)
 )
 AND (
     sqlc.narg('min_similarity')::float IS NULL
-    OR (
-        (1 - (j."TitleEmbedding" <=> sq."SearchQueryEmbedding")) * 0.7 +
-        (1 - (j."DescriptionEmbedding" <=> sq."SearchQueryEmbedding")) * 0.3
-    ) >= sqlc.narg('min_similarity')::float
+    OR similarity >= sqlc.narg('min_similarity')::float
 )
-ORDER BY similarity DESC, j."CreatedAt" DESC
+AND NOT EXISTS (
+    SELECT 1 
+    FROM "JobEvaluations" je
+    WHERE je."UserId" = $1
+     AND je."JobId" = jobs_with_sim."Id"
+     AND je."Liked" = false
+
+)
+ORDER BY similarity DESC, "CreatedAt" DESC, "Id" DESC
 LIMIT $2;
 
 -- name: GetJobsWithoutEmbeddings :many

@@ -109,7 +109,7 @@ func SetUserPreferences(c *echo.Context, db *database.Database) error {
 	embeddingRequest.WriteString("; Desired Levels: ")
 	embeddingRequest.WriteString(strings.Join(req.Levels, ", "))
 
-	embedding, err := services.GenerateEmbeddings(embeddingRequest.String())
+	embedding, err := services.GenerateEmbeddings(embeddingRequest.String(), "gemini-embedding-2")
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Erro ao gerar embedding: " + err.Error()})
 	}
