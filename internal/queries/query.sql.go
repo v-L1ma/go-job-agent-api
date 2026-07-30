@@ -213,26 +213,24 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) error {
 }
 
 const createUserPreferences = `-- name: CreateUserPreferences :exec
-INSERT INTO "UserPreferences" ("UserId", "Skills", "Levels", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt") 
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+INSERT INTO "Preferences" ("UserId", "SimilarityPercent", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt") 
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 `
 
 type CreateUserPreferencesParams struct {
-	UserId         pgtype.UUID        `db:"UserId" json:"UserId"`
-	Skills         []string           `db:"Skills" json:"Skills"`
-	Levels         []string           `db:"Levels" json:"Levels"`
-	Active         bool               `db:"Active" json:"Active"`
-	CreatedBy      string             `db:"CreatedBy" json:"CreatedBy"`
-	CreatedAt      pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
-	LastModifiedBy string             `db:"LastModifiedBy" json:"LastModifiedBy"`
-	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
+	UserId            pgtype.UUID        `db:"UserId" json:"UserId"`
+	SimilarityPercent pgtype.Float8      `db:"SimilarityPercent" json:"SimilarityPercent"`
+	Active            bool               `db:"Active" json:"Active"`
+	CreatedBy         string             `db:"CreatedBy" json:"CreatedBy"`
+	CreatedAt         pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+	LastModifiedBy    string             `db:"LastModifiedBy" json:"LastModifiedBy"`
+	LastModifiedAt    pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
 }
 
 func (q *Queries) CreateUserPreferences(ctx context.Context, arg CreateUserPreferencesParams) error {
 	_, err := q.db.Exec(ctx, createUserPreferences,
 		arg.UserId,
-		arg.Skills,
-		arg.Levels,
+		arg.SimilarityPercent,
 		arg.Active,
 		arg.CreatedBy,
 		arg.CreatedAt,
@@ -463,7 +461,7 @@ func (q *Queries) FindQuestionAnswer(ctx context.Context, questions []string) ([
 const findUserPreferences = `-- name: FindUserPreferences :one
 SELECT EXISTS (
     SELECT 1
-    FROM "UserPreferences"
+    FROM "Preferences"
     WHERE "UserId" = $1
 ) AS "exists"
 `
@@ -630,16 +628,26 @@ WITH jobs_with_sim AS (
         (
             COALESCE((1 - (j."TitleEmbedding" <=> sq."SearchQueryEmbedding")) * 0.7, 0) +
             COALESCE((1 - (j."DescriptionEmbedding" <=> sq."SearchQueryEmbedding")) * 0.3, 0)
-        ) AS similarity
+        )::double precision AS similarity
     FROM "Jobs" j
     JOIN "UserSearchQueries" usq
         ON usq."UserId" = $1
     JOIN "SearchQueries" sq
         ON sq."Id" = usq."SearchQueryId"
     WHERE NOT EXISTS (
+    SELECT 1
+    FROM "Applications" a
+    WHERE a."JobId" = j."Id"
+      AND a."UserId" = $1
+    )
+    AND NOT EXISTS (
         SELECT 1
         FROM "Applications" a
         WHERE a."JobId" = j."Id"
+        AND a."Status" = 'closed'
+    ) AND (
+         $7::text IS NULL
+        OR j."Platform" = $7::text
     )
 )
 SELECT "Id", "PlataformJobId", "Title", "Description", "Url", "IsApplied", "Status", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt", "Platform", "Company", "TitleEmbedding", "DescriptionEmbedding", similarity
@@ -671,6 +679,7 @@ type GetJobsParams struct {
 	CursorCreatedAt  pgtype.Timestamptz `db:"cursor_created_at" json:"cursor_created_at"`
 	CursorID         pgtype.UUID        `db:"cursor_id" json:"cursor_id"`
 	MinSimilarity    pgtype.Float8      `db:"min_similarity" json:"min_similarity"`
+	Platform         pgtype.Text        `db:"platform" json:"platform"`
 }
 
 type GetJobsRow struct {
@@ -701,6 +710,7 @@ func (q *Queries) GetJobs(ctx context.Context, arg GetJobsParams) ([]GetJobsRow,
 		arg.CursorCreatedAt,
 		arg.CursorID,
 		arg.MinSimilarity,
+		arg.Platform,
 	)
 	if err != nil {
 		return nil, err
@@ -1080,38 +1090,40 @@ func (q *Queries) GetUserJobStats(ctx context.Context, userid pgtype.UUID) (GetU
 	return i, err
 }
 
-const getUserPreferences = `-- name: GetUserPreferences :many
-SELECT "UserId", 
-        "Skills", 
-        "Levels" 
-FROM "UserPreferences" 
-WHERE "UserId" = $1 AND "Active" = true
+const getUserPreferences = `-- name: GetUserPreferences :one
+SELECT
+    u."Id" AS "UserId",
+    COALESCE(pref."SimilarityPercent", 0.7) AS "SimilarityPercent",
+    COALESCE(sq."Keywords", ARRAY[]::text[]) AS "Keywords",
+    COALESCE(sq."Levels", ARRAY[]::text[]) AS "Levels"
+FROM "AspNetUsers" u
+LEFT JOIN "Preferences" pref
+    ON pref."UserId" = u."Id"
+    AND pref."Active" = true
+LEFT JOIN "UserSearchQueries" usq
+    ON usq."UserId" = u."Id"
+LEFT JOIN "SearchQueries" sq
+    ON sq."Id" = usq."SearchQueryId"
+WHERE u."Id" = $1
 `
 
 type GetUserPreferencesRow struct {
-	UserId pgtype.UUID `db:"UserId" json:"UserId"`
-	Skills []string    `db:"Skills" json:"Skills"`
-	Levels []string    `db:"Levels" json:"Levels"`
+	UserId            pgtype.UUID `db:"UserId" json:"UserId"`
+	SimilarityPercent float64     `db:"SimilarityPercent" json:"SimilarityPercent"`
+	Keywords          []string    `db:"Keywords" json:"Keywords"`
+	Levels            []string    `db:"Levels" json:"Levels"`
 }
 
-func (q *Queries) GetUserPreferences(ctx context.Context, userid pgtype.UUID) ([]GetUserPreferencesRow, error) {
-	rows, err := q.db.Query(ctx, getUserPreferences, userid)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []GetUserPreferencesRow
-	for rows.Next() {
-		var i GetUserPreferencesRow
-		if err := rows.Scan(&i.UserId, &i.Skills, &i.Levels); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) GetUserPreferences(ctx context.Context, id pgtype.UUID) (GetUserPreferencesRow, error) {
+	row := q.db.QueryRow(ctx, getUserPreferences, id)
+	var i GetUserPreferencesRow
+	err := row.Scan(
+		&i.UserId,
+		&i.SimilarityPercent,
+		&i.Keywords,
+		&i.Levels,
+	)
+	return i, err
 }
 
 const getUserQuestions = `-- name: GetUserQuestions :many
@@ -1319,25 +1331,23 @@ func (q *Queries) UpdateUserPasswordByEmail(ctx context.Context, arg UpdateUserP
 }
 
 const updateUserPreferences = `-- name: UpdateUserPreferences :exec
-UPDATE "UserPreferences" 
-SET "UserId" = $1, "Skills" = $2, "Levels" = $3, "Active" = $4, "LastModifiedBy" = $5, "LastModifiedAt" = $6 
+UPDATE "Preferences" 
+SET "SimilarityPercent" = $2, "Active" = $3, "LastModifiedBy" = $4, "LastModifiedAt" = $5 
 WHERE "UserId" = $1
 `
 
 type UpdateUserPreferencesParams struct {
-	UserId         pgtype.UUID        `db:"UserId" json:"UserId"`
-	Skills         []string           `db:"Skills" json:"Skills"`
-	Levels         []string           `db:"Levels" json:"Levels"`
-	Active         bool               `db:"Active" json:"Active"`
-	LastModifiedBy string             `db:"LastModifiedBy" json:"LastModifiedBy"`
-	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
+	UserId            pgtype.UUID        `db:"UserId" json:"UserId"`
+	SimilarityPercent pgtype.Float8      `db:"SimilarityPercent" json:"SimilarityPercent"`
+	Active            bool               `db:"Active" json:"Active"`
+	LastModifiedBy    string             `db:"LastModifiedBy" json:"LastModifiedBy"`
+	LastModifiedAt    pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
 }
 
 func (q *Queries) UpdateUserPreferences(ctx context.Context, arg UpdateUserPreferencesParams) error {
 	_, err := q.db.Exec(ctx, updateUserPreferences,
 		arg.UserId,
-		arg.Skills,
-		arg.Levels,
+		arg.SimilarityPercent,
 		arg.Active,
 		arg.LastModifiedBy,
 		arg.LastModifiedAt,

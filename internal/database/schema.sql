@@ -50,19 +50,17 @@ CREATE TABLE IF NOT EXISTS public."UserCvs" (
   constraint PK_UserCvs primary key (Id)
 );
 
-CREATE TABLE IF NOT EXISTS public."UserPreferences" (
-  "Id" uuid not null,
+create table public."Preferences" (
+  "Id" uuid not null default gen_random_uuid (),
   "UserId" uuid not null,
-  "Skills" text[] not null,
-  "Area" text not null,
   "Active" boolean not null,
   "CreatedBy" text not null,
   "CreatedAt" timestamp with time zone not null,
   "LastModifiedBy" text not null,
   "LastModifiedAt" timestamp with time zone not null,
-  "Levels" text[] not null default array[]::text[],
-  constraint PK_UserPreferences primary key (Id)
-);
+  "SimilarityPercent" double precision null default '0.7'::double precision,
+  constraint PK_Preferences primary key ("Id")
+) TABLESPACE pg_default;
 
 CREATE TABLE IF NOT EXISTS public."UserSearchQueries" (
   "UserId" uuid not null,

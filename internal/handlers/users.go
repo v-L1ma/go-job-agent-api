@@ -18,6 +18,7 @@ import (
 type SetUserPreferencesRequest struct {
 	Skills []string `json:"skills" validate:"min=1,dive,required"`
 	Levels []string `json:"levels" validate:"min=1,dive,required"`
+	Precision float64  `json:"precision" validate:"required,min=0.0,max=1.0"`
 }
 
 func SetUserPreferences(c *echo.Context, db *database.Database) error {
@@ -55,6 +56,10 @@ func SetUserPreferences(c *echo.Context, db *database.Database) error {
 
 	if len(req.Skills) <= 0 && len(req.Levels) <= 0 {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Informe ao menos uma Habilidade e uma senioridade."})
+	}
+
+	if req.Precision < 0.0 || req.Precision > 1.0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "A precisão deve estar entre 0.0 e 1.0."})
 	}
 
 	alreadyCreated, err := db.Query.ExistsSearchQueryByUserId(c.Request().Context(), userID)
@@ -143,6 +148,16 @@ func SetUserPreferences(c *echo.Context, db *database.Database) error {
 				return c.JSON(http.StatusInternalServerError, map[string]string{"error update": err.Error()})
 			}
 
+			if err := db.Query.UpdateUserPreferences(c.Request().Context(), sqlc.UpdateUserPreferencesParams{
+				UserId: userID,
+				SimilarityPercent: pgtype.Float8{Float64: req.Precision, Valid: true},
+				Active: true,
+				LastModifiedBy: userID.String(),
+				LastModifiedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
+			}); err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error update user preferences": err.Error()})
+			}
+
 			return c.JSON(http.StatusOK, map[string]string{"message": "Preferências atualizadas com sucesso!"})
 		}
 
@@ -169,6 +184,16 @@ func SetUserPreferences(c *echo.Context, db *database.Database) error {
 		})
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error update user search query": err.Error()})
+		}
+
+		if err := db.Query.UpdateUserPreferences(c.Request().Context(), sqlc.UpdateUserPreferencesParams{
+			UserId: userID,
+			SimilarityPercent: pgtype.Float8{Float64: req.Precision, Valid: true},
+			Active: true,
+			LastModifiedBy: userID.String(),
+			LastModifiedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
+		}); err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error update user preferences": err.Error()})
 		}
 
 		return c.JSON(http.StatusOK, map[string]string{"message": "Preferências atualizadas com sucesso!"})
@@ -200,6 +225,18 @@ func SetUserPreferences(c *echo.Context, db *database.Database) error {
 
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error create user search query": err.Error()})
+	}
+
+	if err := db.Query.CreateUserPreferences(c.Request().Context(), sqlc.CreateUserPreferencesParams{
+		UserId: userID,
+		SimilarityPercent: pgtype.Float8{Float64: req.Precision, Valid: true},
+		Active: true,
+		CreatedBy: userID.String(),
+		CreatedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
+		LastModifiedBy: userID.String(),
+		LastModifiedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
+	}); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error create user preferences": err.Error()})
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "Preferências criadas com sucesso!"})
@@ -461,7 +498,7 @@ func GetUserPreferences(c *echo.Context, db *database.Database) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	return c.JSON(http.StatusOK, dto.ResponseBase[[]sqlc.GetUserPreferencesRow]{
+	return c.JSON(http.StatusOK, dto.ResponseBase[sqlc.GetUserPreferencesRow]{
 		Message: "Preferências encontradas com sucesso!",
 		Data:    userPreferences,
 	})

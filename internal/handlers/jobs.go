@@ -92,6 +92,21 @@ func GetJobs(c *echo.Context, db *database.Database) error {
 		params.CursorID = id
 	}
 
+	platform := c.QueryParam("platform")
+	if platform != "" {
+		params.Platform = pgtype.Text{String: platform, Valid: true}
+	}
+
+	var simularityPercent pgtype.Float8
+	preferences, err := db.Query.GetUserPreferences(c.Request().Context(), userID)
+	if err != nil {
+		simularityPercent = pgtype.Float8{Float64: 0.7, Valid: true}
+	}
+
+	simularityPercent = pgtype.Float8{Float64: preferences.SimilarityPercent, Valid: true}
+
+	params.MinSimilarity = simularityPercent
+
 	jobs, err := db.Query.GetJobs(c.Request().Context(), params)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})

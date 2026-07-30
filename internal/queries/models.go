@@ -127,6 +127,17 @@ type PasswordResetToken struct {
 	CreatedAt pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
 }
 
+type Preference struct {
+	Id                pgtype.UUID        `db:"Id" json:"Id"`
+	UserId            pgtype.UUID        `db:"UserId" json:"UserId"`
+	Active            bool               `db:"Active" json:"Active"`
+	CreatedBy         string             `db:"CreatedBy" json:"CreatedBy"`
+	CreatedAt         pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+	LastModifiedBy    string             `db:"LastModifiedBy" json:"LastModifiedBy"`
+	LastModifiedAt    pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
+	SimilarityPercent pgtype.Float8      `db:"SimilarityPercent" json:"SimilarityPercent"`
+}
+
 type Question struct {
 	Id             pgtype.UUID        `db:"Id" json:"Id"`
 	Question       string             `db:"Question" json:"Question"`
@@ -166,19 +177,6 @@ type UserCv struct {
 	CreatedAt      pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
 	LastModifiedBy string             `db:"LastModifiedBy" json:"LastModifiedBy"`
 	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
-}
-
-type UserPreference struct {
-	Id             pgtype.UUID        `db:"Id" json:"Id"`
-	UserId         pgtype.UUID        `db:"UserId" json:"UserId"`
-	Skills         []string           `db:"Skills" json:"Skills"`
-	Area           string             `db:"Area" json:"Area"`
-	Active         bool               `db:"Active" json:"Active"`
-	CreatedBy      string             `db:"CreatedBy" json:"CreatedBy"`
-	CreatedAt      pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
-	LastModifiedBy string             `db:"LastModifiedBy" json:"LastModifiedBy"`
-	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
-	Levels         []string           `db:"Levels" json:"Levels"`
 }
 
 type UserSearchQuery struct {

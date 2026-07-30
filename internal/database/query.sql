@@ -12,9 +12,9 @@ WITH jobs_with_sim AS (
     JOIN "SearchQueries" sq
         ON sq."Id" = usq."SearchQueryId"
     WHERE NOT EXISTS (
-        SELECT 1
-        FROM "Applications" a
-        WHERE a."JobId" = j."Id"
+    SELECT 1
+    FROM "Applications" a
+    WHERE a."JobId" = j."Id"
     )
 )
 SELECT *
@@ -116,27 +116,36 @@ INSERT INTO "AspNetUsers" ("Name", "CPF", "Email", "PasswordHash", "AccessFailed
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
 
 -- name: CreateUserPreferences :exec
-INSERT INTO "UserPreferences" ("UserId", "Skills", "Levels", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt") 
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
+INSERT INTO "Preferences" ("UserId", "SimilarityPercent", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt") 
+VALUES ($1, $2, $3, $4, $5, $6, $7);
 
 -- name: UpdateUserPreferences :exec
-UPDATE "UserPreferences" 
-SET "UserId" = $1, "Skills" = $2, "Levels" = $3, "Active" = $4, "LastModifiedBy" = $5, "LastModifiedAt" = $6 
+UPDATE "Preferences" 
+SET "SimilarityPercent" = $2, "Active" = $3, "LastModifiedBy" = $4, "LastModifiedAt" = $5 
 WHERE "UserId" = $1;
 
 -- name: FindUserPreferences :one
 SELECT EXISTS (
     SELECT 1
-    FROM "UserPreferences"
+    FROM "Preferences"
     WHERE "UserId" = $1
 ) AS "exists";
 
--- name: GetUserPreferences :many
-SELECT "UserId", 
-        "Skills", 
-        "Levels" 
-FROM "UserPreferences" 
-WHERE "UserId" = $1 AND "Active" = true;
+-- name: GetUserPreferences :one
+SELECT
+    u."Id" AS "UserId",
+    COALESCE(pref."SimilarityPercent", 0.7) AS "SimilarityPercent",
+    COALESCE(sq."Keywords", ARRAY[]::text[]) AS "Keywords",
+    COALESCE(sq."Levels", ARRAY[]::text[]) AS "Levels"
+FROM "AspNetUsers" u
+LEFT JOIN "Preferences" pref
+    ON pref."UserId" = u."Id"
+    AND pref."Active" = true
+LEFT JOIN "UserSearchQueries" usq
+    ON usq."UserId" = u."Id"
+LEFT JOIN "SearchQueries" sq
+    ON sq."Id" = usq."SearchQueryId"
+WHERE u."Id" = $1;
 
 -- name: SaveUserCv :exec
 INSERT INTO "UserCvs" ("UserId", "UrlFile", "ExtractedText", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt") 
