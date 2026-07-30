@@ -3,6 +3,7 @@ package helpers
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"job-agent-api/internal/dto"
 	"strconv"
 	"strings"
@@ -32,9 +33,8 @@ func cleanJSON(raw string) string {
 func ParseQuestionsResponse(raw string) (dto.RespostasRequest, error) {
 	cleaned := cleanJSON(raw)
 
-	var flat map[string]string
-	if err := json.Unmarshal([]byte(cleaned), &flat); err == nil && len(flat) > 0 {
-		return flatToRespostas(flat), nil
+	if result, ok := tryParseFlat(cleaned); ok {
+		return result, nil
 	}
 
 	var data dto.RespostasRequest
@@ -46,8 +46,8 @@ func ParseQuestionsResponse(raw string) (dto.RespostasRequest, error) {
 	cleaned = strings.ReplaceAll(cleaned, `\"`, `"`)
 	cleaned = cleanJSON(cleaned)
 
-	if err := json.Unmarshal([]byte(cleaned), &flat); err == nil && len(flat) > 0 {
-		return flatToRespostas(flat), nil
+	if result, ok := tryParseFlat(cleaned); ok {
+		return result, nil
 	}
 
 	if err := json.Unmarshal([]byte(cleaned), &data); err == nil && len(data.Respostas) > 0 {
@@ -55,6 +55,21 @@ func ParseQuestionsResponse(raw string) (dto.RespostasRequest, error) {
 	}
 
 	return dto.RespostasRequest{}, errors.New("não foi possível interpretar a resposta da IA")
+}
+
+func tryParseFlat(s string) (dto.RespostasRequest, bool) {
+	var flat map[string]interface{}
+	if err := json.Unmarshal([]byte(s), &flat); err != nil || len(flat) == 0 {
+		return dto.RespostasRequest{}, false
+	}
+	var respostas []dto.RespostaQuestao
+	for pergunta, v := range flat {
+		respostas = append(respostas, dto.RespostaQuestao{
+			Pergunta: pergunta,
+			Resposta: fmt.Sprintf("%v", v),
+		})
+	}
+	return dto.RespostasRequest{Respostas: respostas}, true
 }
 
 func flatToRespostas(flat map[string]string) dto.RespostasRequest {

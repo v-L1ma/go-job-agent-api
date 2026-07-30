@@ -5,7 +5,7 @@ WITH jobs_with_sim AS (
         (
             COALESCE((1 - (j."TitleEmbedding" <=> sq."SearchQueryEmbedding")) * 0.7, 0) +
             COALESCE((1 - (j."DescriptionEmbedding" <=> sq."SearchQueryEmbedding")) * 0.3, 0)
-        ) AS similarity
+        )::double precision AS similarity
     FROM "Jobs" j
     JOIN "UserSearchQueries" usq
         ON usq."UserId" = $1
@@ -15,6 +15,16 @@ WITH jobs_with_sim AS (
     SELECT 1
     FROM "Applications" a
     WHERE a."JobId" = j."Id"
+      AND a."UserId" = $1
+    )
+    AND NOT EXISTS (
+        SELECT 1
+        FROM "Applications" a
+        WHERE a."JobId" = j."Id"
+        AND a."Status" = 'closed'
+    ) AND (
+         sqlc.narg('platform')::text IS NULL
+        OR j."Platform" = sqlc.narg('platform')::text
     )
 )
 SELECT *
