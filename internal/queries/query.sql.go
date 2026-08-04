@@ -513,6 +513,75 @@ func (q *Queries) GetApplicationsPerDay(ctx context.Context, userid pgtype.UUID)
 	return items, nil
 }
 
+const getApplicationsWithQuestions = `-- name: GetApplicationsWithQuestions :many
+SELECT
+    a."Id",
+    j."Title",
+    j."Company",
+    a."Platform",
+    a."Status",
+    a."CreatedAt",
+    COUNT(q."Id")::int AS "QuestionsCount",
+    COALESCE(
+        json_agg(
+            CASE WHEN q."Id" IS NOT NULL THEN
+                json_build_object(
+                    'id', q."Id",
+                    'question', q."Question",
+                    'answer', q."Answer"
+                )
+            END
+        ) FILTER (WHERE q."Id" IS NOT NULL),
+        '[]'::json
+    ) AS "Questions"
+FROM "Applications" AS a
+LEFT JOIN "Jobs" AS j ON j."Id" = a."JobId"
+LEFT JOIN "Questions" AS q ON q."JobId" = a."JobId" AND q."UserId" = a."UserId" AND q."Active" = true
+WHERE a."UserId" = $1 AND a."Status" != 'closed'
+GROUP BY a."Id", j."Title", j."Company", a."Platform", a."Status", a."CreatedAt"
+ORDER BY a."CreatedAt" DESC
+`
+
+type GetApplicationsWithQuestionsRow struct {
+	Id             pgtype.UUID        `db:"Id" json:"Id"`
+	Title          pgtype.Text        `db:"Title" json:"Title"`
+	Company        pgtype.Text        `db:"Company" json:"Company"`
+	Platform       pgtype.Text        `db:"Platform" json:"Platform"`
+	Status         string             `db:"Status" json:"Status"`
+	CreatedAt      pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+	QuestionsCount int32              `db:"QuestionsCount" json:"QuestionsCount"`
+	Questions      interface{}        `db:"Questions" json:"Questions"`
+}
+
+func (q *Queries) GetApplicationsWithQuestions(ctx context.Context, userid pgtype.UUID) ([]GetApplicationsWithQuestionsRow, error) {
+	rows, err := q.db.Query(ctx, getApplicationsWithQuestions, userid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetApplicationsWithQuestionsRow
+	for rows.Next() {
+		var i GetApplicationsWithQuestionsRow
+		if err := rows.Scan(
+			&i.Id,
+			&i.Title,
+			&i.Company,
+			&i.Platform,
+			&i.Status,
+			&i.CreatedAt,
+			&i.QuestionsCount,
+			&i.Questions,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getGeneratedCvById = `-- name: GetGeneratedCvById :one
 SELECT "UserId", "JobId", "FileName", "ExtractedText"
 FROM "GeneratedCvsNew" WHERE "Id" = $1
@@ -924,51 +993,6 @@ func (q *Queries) GetSearchQueryIdByUserId(ctx context.Context, userid pgtype.UU
 	var SearchQueryId pgtype.UUID
 	err := row.Scan(&SearchQueryId)
 	return SearchQueryId, err
-}
-
-const getUserApplications = `-- name: GetUserApplications :many
-SELECT a."Status",
-    a."Obs",
-    a."Platform",
-    j."Title",
-    a."CreatedAt"
-FROM "Applications" AS a
-LEFT JOIN "Jobs" AS j ON j."Id" = a."JobId"
-WHERE a."UserId" = $1
-`
-
-type GetUserApplicationsRow struct {
-	Status    string             `db:"Status" json:"Status"`
-	Obs       pgtype.Text        `db:"Obs" json:"Obs"`
-	Platform  pgtype.Text        `db:"Platform" json:"Platform"`
-	Title     pgtype.Text        `db:"Title" json:"Title"`
-	CreatedAt pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
-}
-
-func (q *Queries) GetUserApplications(ctx context.Context, userid pgtype.UUID) ([]GetUserApplicationsRow, error) {
-	rows, err := q.db.Query(ctx, getUserApplications, userid)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []GetUserApplicationsRow
-	for rows.Next() {
-		var i GetUserApplicationsRow
-		if err := rows.Scan(
-			&i.Status,
-			&i.Obs,
-			&i.Platform,
-			&i.Title,
-			&i.CreatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one

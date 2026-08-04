@@ -298,15 +298,33 @@ WHERE "Id" = $1 AND q."Active" = true;
 -- name: UpdateQuestionAnswer :exec
 UPDATE "Questions" SET "Answer" = $2 WHERE "Id" = $1;
 
--- name: GetUserApplications :many
-SELECT a."Status",
-    a."Obs",
-    a."Platform",
+-- name: GetApplicationsWithQuestions :many
+SELECT
+    a."Id",
     j."Title",
-    a."CreatedAt"
+    j."Company",
+    a."Platform",
+    a."Status",
+    a."CreatedAt",
+    COUNT(q."Id")::int AS "QuestionsCount",
+    COALESCE(
+        json_agg(
+            CASE WHEN q."Id" IS NOT NULL THEN
+                json_build_object(
+                    'id', q."Id",
+                    'question', q."Question",
+                    'answer', q."Answer"
+                )
+            END
+        ) FILTER (WHERE q."Id" IS NOT NULL),
+        '[]'::json
+    ) AS "Questions"
 FROM "Applications" AS a
 LEFT JOIN "Jobs" AS j ON j."Id" = a."JobId"
-WHERE a."UserId" = $1;
+LEFT JOIN "Questions" AS q ON q."JobId" = a."JobId" AND q."UserId" = a."UserId" AND q."Active" = true
+WHERE a."UserId" = $1 AND a."Status" != 'closed'
+GROUP BY a."Id", j."Title", j."Company", a."Platform", a."Status", a."CreatedAt"
+ORDER BY a."CreatedAt" DESC;
 
 -- name: CreateApplicationRate :exec
 INSERT INTO "ApplicationEvaluations" ("UserId", "ApplicationId", "Liked", "Feedback", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt")

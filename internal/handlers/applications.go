@@ -30,14 +30,48 @@ func GetApplications(c *echo.Context, db *database.Database) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Usuário não encontrado."})
 	}
 
-	applications, err := db.Query.GetUserApplications(c.Request().Context(), userID)
+	applications, err := db.Query.GetApplicationsWithQuestions(c.Request().Context(), userID)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	return c.JSON(http.StatusOK, dto.ResponseBase[[]sqlc.GetUserApplicationsRow]{
+	result := make([]dto.ApplicationWithQuestions, 0, len(applications))
+	for _, app := range applications {
+		questions := make([]dto.QuestionAnswer, 0)
+
+		if questionsRaw, ok := app.Questions.([]interface{}); ok {
+			for _, q := range questionsRaw {
+				if qMap, ok := q.(map[string]interface{}); ok {
+					qa := dto.QuestionAnswer{}
+					if id, ok := qMap["id"].(string); ok {
+						qa.Id = id
+					}
+					if question, ok := qMap["question"].(string); ok {
+						qa.Question = question
+					}
+					if answer, ok := qMap["answer"].(string); ok {
+						qa.Answer = answer
+					}
+					questions = append(questions, qa)
+				}
+			}
+		}
+
+		result = append(result, dto.ApplicationWithQuestions{
+			Id:             app.Id.String(),
+			Title:          app.Title.String,
+			Company:        app.Company.String,
+			Platform:       app.Platform.String,
+			Status:         app.Status,
+			CreatedAt:      app.CreatedAt.Time.Format("2006-01-02T15:04:05Z07:00"),
+			QuestionsCount: app.QuestionsCount,
+			Questions:      questions,
+		})
+	}
+
+	return c.JSON(http.StatusOK, dto.ResponseBase[[]dto.ApplicationWithQuestions]{
 		Message: "Candidaturas encontradas com sucesso!",
-		Data:    applications,
+		Data:    result,
 	})
 }
 

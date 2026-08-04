@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"job-agent-api/internal/database"
 	"job-agent-api/internal/dto"
 	"job-agent-api/internal/helpers"
@@ -187,6 +188,7 @@ func AnswerQuestion(c *echo.Context, db *database.Database) error {
 	sb.WriteString("- Se uma pergunta possuir opções de resposta, escolha a opção que melhor representa o perfil do candidato.")
 	sb.WriteString("- Se a pergunta for aberta, produza uma resposta completa, convincente e bem escrita.")
 	sb.WriteString("- Evite respostas curtas quando uma resposta mais detalhada agregar valor.")
+	sb.WriteString("- Perguntas do tipo numeric devem ser respondidas com números, sem palavras ou explicações adicionais.")
 	sb.WriteString("")
 	sb.WriteString("Informações ausentes:")
 	sb.WriteString("- Nunca responda 'Informação não disponível no currículo', 'Não informado', 'Não sei' ou frases semelhantes.")
@@ -257,6 +259,8 @@ func AnswerQuestion(c *echo.Context, db *database.Database) error {
 			"error": "Resposta inválida da IA",
 		})
 	}
+
+	fmt.Println("Resposta bruta da IA: ", rawStr)
 
 	respostas, err := helpers.ParseQuestionsResponse(rawStr)
 	if err != nil {
