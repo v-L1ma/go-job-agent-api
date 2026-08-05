@@ -12,7 +12,9 @@ type ApplicationWithQuestions struct {
 }
 
 type QuestionAnswer struct {
-	Id       string `json:"id"`
-	Question string `json:"question"`
-	Answer   string `json:"answer"`
+	Id       string   `json:"id"`
+	Question string   `json:"question"`
+	Answer   string   `json:"answer"`
+	Type     string   `json:"type"`
+	Options  []string `json:"options"`
 }

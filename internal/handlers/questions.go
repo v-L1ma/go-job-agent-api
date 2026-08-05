@@ -277,11 +277,13 @@ func AnswerQuestion(c *echo.Context, db *database.Database) error {
 
 	qtx := db.Query.WithTx(tx)
 
-	for _, question := range respostas.Respostas {
+	for i, question := range respostas.Respostas {
 		err := qtx.CreateQuestion(c.Request().Context(), sqlc.CreateQuestionParams{
 			UserId: userID,
 			JobId: jobID,
 			Question: question.Pergunta,
+			Type: pgtype.Text{String: req.Questoes[i].Tipo, Valid: true},
+			Options: req.Questoes[i].Opcoes,
 			Answer: question.Resposta,
 			Active: true,
 			CreatedBy: userID.String(),

@@ -141,6 +141,8 @@ type Preference struct {
 type Question struct {
 	Id             pgtype.UUID        `db:"Id" json:"Id"`
 	Question       string             `db:"Question" json:"Question"`
+	Type           pgtype.Text        `db:"Type" json:"Type"`
+	Options        []string           `db:"Options" json:"Options"`
 	Answer         string             `db:"Answer" json:"Answer"`
 	JobId          pgtype.UUID        `db:"JobId" json:"JobId"`
 	UserId         pgtype.UUID        `db:"UserId" json:"UserId"`

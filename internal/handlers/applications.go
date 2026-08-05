@@ -52,6 +52,16 @@ func GetApplications(c *echo.Context, db *database.Database) error {
 					if answer, ok := qMap["answer"].(string); ok {
 						qa.Answer = answer
 					}
+					if t, ok := qMap["type"].(string); ok {
+						qa.Type = t
+					}
+					if opts, ok := qMap["options"].([]interface{}); ok {
+						for _, o := range opts {
+							if s, ok := o.(string); ok {
+								qa.Options = append(qa.Options, s)
+							}
+						}
+					}
 					questions = append(questions, qa)
 				}
 			}

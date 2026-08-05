@@ -183,6 +183,8 @@ CREATE INDEX IF NOT EXISTS IX_Applications_JobId ON public."Applications" USING 
 create table public."Questions" (
   "Id" uuid not null default gen_random_uuid(),
   "Question" text not null,
+  "Type" text null,
+  "Options" text[] null,
   "Answer" text not null,
   "JobId" uuid null,
   "UserId" uuid null,

@@ -271,8 +271,8 @@ INSERT INTO "Applications" ("UserId", "JobId", "Status", "Obs", "Platform", "Cre
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);
 
 -- name: CreateQuestion :exec
-INSERT INTO "Questions" ("UserId", "JobId", "Question", "Answer", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt")
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);
+INSERT INTO "Questions" ("UserId", "JobId", "Question", "Type", "Options", "Answer", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt")
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);
 
 -- name: FindQuestionAnswer :many
 SELECT "Question", 
@@ -313,7 +313,9 @@ SELECT
                 json_build_object(
                     'id', q."Id",
                     'question', q."Question",
-                    'answer', q."Answer"
+                    'answer', q."Answer",
+                    'type', q."Type",
+                    'options', q."Options"
                 )
             END
         ) FILTER (WHERE q."Id" IS NOT NULL),

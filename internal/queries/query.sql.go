@@ -109,14 +109,16 @@ func (q *Queries) CreatePasswordResetToken(ctx context.Context, arg CreatePasswo
 }
 
 const createQuestion = `-- name: CreateQuestion :exec
-INSERT INTO "Questions" ("UserId", "JobId", "Question", "Answer", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt")
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+INSERT INTO "Questions" ("UserId", "JobId", "Question", "Type", "Options", "Answer", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt")
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 `
 
 type CreateQuestionParams struct {
 	UserId         pgtype.UUID        `db:"UserId" json:"UserId"`
 	JobId          pgtype.UUID        `db:"JobId" json:"JobId"`
 	Question       string             `db:"Question" json:"Question"`
+	Type           pgtype.Text        `db:"Type" json:"Type"`
+	Options        []string           `db:"Options" json:"Options"`
 	Answer         string             `db:"Answer" json:"Answer"`
 	Active         bool               `db:"Active" json:"Active"`
 	CreatedBy      string             `db:"CreatedBy" json:"CreatedBy"`
@@ -130,6 +132,8 @@ func (q *Queries) CreateQuestion(ctx context.Context, arg CreateQuestionParams) 
 		arg.UserId,
 		arg.JobId,
 		arg.Question,
+		arg.Type,
+		arg.Options,
 		arg.Answer,
 		arg.Active,
 		arg.CreatedBy,
@@ -528,7 +532,9 @@ SELECT
                 json_build_object(
                     'id', q."Id",
                     'question', q."Question",
-                    'answer', q."Answer"
+                    'answer', q."Answer",
+                    'type', q."Type",
+                    'options', q."Options"
                 )
             END
         ) FILTER (WHERE q."Id" IS NOT NULL),
