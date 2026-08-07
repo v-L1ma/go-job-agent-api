@@ -588,6 +588,46 @@ func (q *Queries) GetApplicationsWithQuestions(ctx context.Context, userid pgtyp
 	return items, nil
 }
 
+const getExecutionJobs = `-- name: GetExecutionJobs :many
+SELECT "Id", "Title", "Url", "Platform", "Company"
+FROM "Jobs" 
+WHERE "ExecutionId" = $1
+`
+
+type GetExecutionJobsRow struct {
+	Id       pgtype.UUID `db:"Id" json:"Id"`
+	Title    string      `db:"Title" json:"Title"`
+	Url      string      `db:"Url" json:"Url"`
+	Platform string      `db:"Platform" json:"Platform"`
+	Company  string      `db:"Company" json:"Company"`
+}
+
+func (q *Queries) GetExecutionJobs(ctx context.Context, executionid pgtype.UUID) ([]GetExecutionJobsRow, error) {
+	rows, err := q.db.Query(ctx, getExecutionJobs, executionid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetExecutionJobsRow
+	for rows.Next() {
+		var i GetExecutionJobsRow
+		if err := rows.Scan(
+			&i.Id,
+			&i.Title,
+			&i.Url,
+			&i.Platform,
+			&i.Company,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getGeneratedCvById = `-- name: GetGeneratedCvById :one
 SELECT "UserId", "JobId", "FileName", "ExtractedText"
 FROM "GeneratedCvsNew" WHERE "Id" = $1
@@ -961,6 +1001,110 @@ func (q *Queries) GetQuestionById(ctx context.Context, id pgtype.UUID) (GetQuest
 	return i, err
 }
 
+const getScrapperLogs = `-- name: GetScrapperLogs :many
+SELECT "Id", "Query", "Platform", "ExecutedAt", "Status", "Obs", "SavedJobsCount"
+FROM "ScraperLogs"
+ORDER BY "ExecutedAt" DESC
+`
+
+type GetScrapperLogsRow struct {
+	Id             pgtype.UUID        `db:"Id" json:"Id"`
+	Query          string             `db:"Query" json:"Query"`
+	Platform       string             `db:"Platform" json:"Platform"`
+	ExecutedAt     pgtype.Timestamptz `db:"ExecutedAt" json:"ExecutedAt"`
+	Status         string             `db:"Status" json:"Status"`
+	Obs            pgtype.Text        `db:"Obs" json:"Obs"`
+	SavedJobsCount int32              `db:"SavedJobsCount" json:"SavedJobsCount"`
+}
+
+func (q *Queries) GetScrapperLogs(ctx context.Context) ([]GetScrapperLogsRow, error) {
+	rows, err := q.db.Query(ctx, getScrapperLogs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetScrapperLogsRow
+	for rows.Next() {
+		var i GetScrapperLogsRow
+		if err := rows.Scan(
+			&i.Id,
+			&i.Query,
+			&i.Platform,
+			&i.ExecutedAt,
+			&i.Status,
+			&i.Obs,
+			&i.SavedJobsCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getSearchQueries = `-- name: GetSearchQueries :many
+SELECT
+    sq."Id",
+    sq."Query",
+    sq."Keywords",
+    sq."NormalizedHash",
+    sq."Levels",
+    COALESCE(sl."Executions", 0) AS "Executions",
+    sl."LastExecutedAt"
+FROM "SearchQueries" sq
+LEFT JOIN (
+    SELECT
+        "SearchQueryId",
+        COUNT(*) AS "Executions",
+        MAX("ExecutedAt") AS "LastExecutedAt"
+    FROM "ScraperLogs"
+    GROUP BY "SearchQueryId"
+) sl
+    ON sl."SearchQueryId" = sq."Id"
+ORDER BY sl."LastExecutedAt" DESC NULLS LAST
+`
+
+type GetSearchQueriesRow struct {
+	Id             pgtype.UUID `db:"Id" json:"Id"`
+	Query          string      `db:"Query" json:"Query"`
+	Keywords       []string    `db:"Keywords" json:"Keywords"`
+	NormalizedHash string      `db:"NormalizedHash" json:"NormalizedHash"`
+	Levels         []string    `db:"Levels" json:"Levels"`
+	Executions     int64       `db:"Executions" json:"Executions"`
+	LastExecutedAt interface{} `db:"LastExecutedAt" json:"LastExecutedAt"`
+}
+
+func (q *Queries) GetSearchQueries(ctx context.Context) ([]GetSearchQueriesRow, error) {
+	rows, err := q.db.Query(ctx, getSearchQueries)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetSearchQueriesRow
+	for rows.Next() {
+		var i GetSearchQueriesRow
+		if err := rows.Scan(
+			&i.Id,
+			&i.Query,
+			&i.Keywords,
+			&i.NormalizedHash,
+			&i.Levels,
+			&i.Executions,
+			&i.LastExecutedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getSearchQueryByUserId = `-- name: GetSearchQueryByUserId :one
 SELECT sq."Id", sq."Query", sq."Keywords", sq."NormalizedHash", sq."Levels"
 FROM "SearchQueries" AS sq
@@ -999,6 +1143,52 @@ func (q *Queries) GetSearchQueryIdByUserId(ctx context.Context, userid pgtype.UU
 	var SearchQueryId pgtype.UUID
 	err := row.Scan(&SearchQueryId)
 	return SearchQueryId, err
+}
+
+const getSearchQueryScrapperLogs = `-- name: GetSearchQueryScrapperLogs :many
+SELECT "Id", "Query", "Platform", "ExecutedAt", "Status", "Obs", "SavedJobsCount", "ExecutionId"
+FROM "ScraperLogs"
+WHERE "SearchQueryId" = $1
+`
+
+type GetSearchQueryScrapperLogsRow struct {
+	Id             pgtype.UUID        `db:"Id" json:"Id"`
+	Query          string             `db:"Query" json:"Query"`
+	Platform       string             `db:"Platform" json:"Platform"`
+	ExecutedAt     pgtype.Timestamptz `db:"ExecutedAt" json:"ExecutedAt"`
+	Status         string             `db:"Status" json:"Status"`
+	Obs            pgtype.Text        `db:"Obs" json:"Obs"`
+	SavedJobsCount int32              `db:"SavedJobsCount" json:"SavedJobsCount"`
+	ExecutionId    pgtype.UUID        `db:"ExecutionId" json:"ExecutionId"`
+}
+
+func (q *Queries) GetSearchQueryScrapperLogs(ctx context.Context, searchqueryid pgtype.UUID) ([]GetSearchQueryScrapperLogsRow, error) {
+	rows, err := q.db.Query(ctx, getSearchQueryScrapperLogs, searchqueryid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetSearchQueryScrapperLogsRow
+	for rows.Next() {
+		var i GetSearchQueryScrapperLogsRow
+		if err := rows.Scan(
+			&i.Id,
+			&i.Query,
+			&i.Platform,
+			&i.ExecutedAt,
+			&i.Status,
+			&i.Obs,
+			&i.SavedJobsCount,
+			&i.ExecutionId,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one

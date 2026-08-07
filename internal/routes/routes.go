@@ -146,4 +146,18 @@ func RegisterRoutes(e *echo.Echo, db *database.Database) {
 	private.POST("/applications/:applicationId/rate", func (c *echo.Context) error{
 		return handlers.RateApplication(c, db)
 	})
+
+	admin := private.Group("/admin")
+
+	admin.GET("/scrapper/logs/:searchQueryId", func (c *echo.Context) error{
+		return handlers.GetScrapperLogs(c, db)
+	})
+
+	admin.GET("/scrapper/jobs/:executionId", func (c *echo.Context) error{
+		return handlers.GetScrapperExecutionJobs(c, db)
+	})
+
+	admin.GET("/search-queries", func (c *echo.Context) error{
+		return handlers.GetSearchQueries(c, db)
+	})
 }

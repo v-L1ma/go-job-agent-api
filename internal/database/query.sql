@@ -373,3 +373,39 @@ SELECT sq."Id", sq."Query", sq."Keywords", sq."NormalizedHash", sq."Levels"
 FROM "SearchQueries" AS sq
 LEFT JOIN "UserSearchQueries" AS usq ON usq."SearchQueryId" = sq."Id"
 WHERE usq."UserId" = $1;
+
+-- name: GetScrapperLogs :many
+SELECT "Id", "Query", "Platform", "ExecutedAt", "Status", "Obs", "SavedJobsCount"
+FROM "ScraperLogs"
+ORDER BY "ExecutedAt" DESC;
+
+-- name: GetSearchQueries :many
+SELECT
+    sq."Id",
+    sq."Query",
+    sq."Keywords",
+    sq."NormalizedHash",
+    sq."Levels",
+    COALESCE(sl."Executions", 0) AS "Executions",
+    sl."LastExecutedAt"
+FROM "SearchQueries" sq
+LEFT JOIN (
+    SELECT
+        "SearchQueryId",
+        COUNT(*) AS "Executions",
+        MAX("ExecutedAt") AS "LastExecutedAt"
+    FROM "ScraperLogs"
+    GROUP BY "SearchQueryId"
+) sl
+    ON sl."SearchQueryId" = sq."Id"
+ORDER BY sl."LastExecutedAt" DESC NULLS LAST;
+
+-- name: GetSearchQueryScrapperLogs :many
+SELECT "Id", "Query", "Platform", "ExecutedAt", "Status", "Obs", "SavedJobsCount", "ExecutionId"
+FROM "ScraperLogs"
+WHERE "SearchQueryId" = $1;
+
+-- name: GetExecutionJobs :many
+SELECT "Id", "Title", "Url", "Platform", "Company"
+FROM "Jobs" 
+WHERE "ExecutionId" = $1;

@@ -103,6 +103,8 @@ type Job struct {
 	Company              string             `db:"Company" json:"Company"`
 	TitleEmbedding       interface{}        `db:"TitleEmbedding" json:"TitleEmbedding"`
 	DescriptionEmbedding interface{}        `db:"DescriptionEmbedding" json:"DescriptionEmbedding"`
+	SearchQueryId        pgtype.UUID        `db:"SearchQueryId" json:"SearchQueryId"`
+	ExecutionId          pgtype.UUID        `db:"ExecutionId" json:"ExecutionId"`
 }
 
 type JobEvaluation struct {
@@ -151,6 +153,18 @@ type Question struct {
 	CreatedAt      pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
 	LastModifiedBy string             `db:"LastModifiedBy" json:"LastModifiedBy"`
 	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
+}
+
+type ScraperLog struct {
+	Id             pgtype.UUID        `db:"Id" json:"Id"`
+	SearchQueryId  pgtype.UUID        `db:"SearchQueryId" json:"SearchQueryId"`
+	Query          string             `db:"Query" json:"Query"`
+	Platform       string             `db:"Platform" json:"Platform"`
+	ExecutedAt     pgtype.Timestamptz `db:"ExecutedAt" json:"ExecutedAt"`
+	Status         string             `db:"Status" json:"Status"`
+	Obs            pgtype.Text        `db:"Obs" json:"Obs"`
+	SavedJobsCount int32              `db:"SavedJobsCount" json:"SavedJobsCount"`
+	ExecutionId    pgtype.UUID        `db:"ExecutionId" json:"ExecutionId"`
 }
 
 type SearchQuery struct {

@@ -15,7 +15,10 @@ create table public."Jobs" (
   "Company" text not null default ''::text,
   "TitleEmbedding" public.vector null,
   "DescriptionEmbedding" public.vector null,
-  constraint PK_Jobs primary key ("Id")
+  "SearchQueryId" uuid null,
+  "ExecutionId" uuid null,
+  constraint PK_Jobs primary key ("Id"),
+  constraint fk_jobs_searchqueries_searchqueryid foreign KEY ("SearchQueryId") references "SearchQueries" ("Id") on delete set null
 ) TABLESPACE pg_default;
 
 create table public."SearchQueries" (
@@ -217,3 +220,17 @@ CREATE TABLE IF NOT EXISTS public."ApplicationEvaluations" (
   constraint FK_ApplicationEvaluations_Applications_ApplicationId foreign KEY ("ApplicationId") references "Applications" ("Id") on delete CASCADE,
   constraint FK_ApplicationEvaluations_AspNetUsers_UserId foreign KEY ("UserId") references "AspNetUsers" ("Id") on delete CASCADE
 );
+
+create table public."ScraperLogs" (
+  "Id" uuid not null default gen_random_uuid (),
+  "SearchQueryId" uuid null,
+  "Query" text not null,
+  "Platform" text not null,
+  "ExecutedAt" timestamp with time zone not null default now(),
+  "Status" text not null,
+  "Obs" text null,
+  "SavedJobsCount" integer not null default 0,
+  "ExecutionId" uuid null,
+  constraint pk_scraperlogs primary key ("Id"),
+  constraint fk_scraperlogs_searchqueries_searchqueryid foreign KEY ("SearchQueryId") references "SearchQueries" ("Id") on delete set null
+) TABLESPACE pg_default;
