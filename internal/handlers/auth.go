@@ -78,7 +78,7 @@ func Register(c *echo.Context, db *database.Database) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
-	err = db.Query.CreateUser(c.Request().Context(), sqlc.CreateUserParams{
+	userId, err := db.Query.CreateUser(c.Request().Context(), sqlc.CreateUserParams{
 		Name:                req.Name,
 		CPF:                 "",
 		Email:               pgtype.Text{String: req.Email, Valid: true},
@@ -91,6 +91,19 @@ func Register(c *echo.Context, db *database.Database) error {
 	})
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	role, err := db.Query.GetRoleByName(c.Request().Context(), "Standard")
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	err = db.Query.AssignRoleToUser(c.Request().Context(), sqlc.AssignRoleToUserParams{
+		UserId: userId,
+		RoleId: role.Id,
+	})
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	return c.JSON(http.StatusCreated, map[string]string{"Message": "Usuário criado com sucesso."})

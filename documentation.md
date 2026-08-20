@@ -46,6 +46,19 @@ O token JWT é obtido via `POST /login` ou `POST /register` e expira em **15 hor
 | PUT | `/users/change-password` | Alterar senha |
 | GET | `/users/statistics` | Obter estatísticas do dashboard |
 
+### Admin (requerem JWT + role `Admin`)
+
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| GET | `/admin/roles` | Listar todos os cargos |
+| GET | `/admin/roles/:id` | Obter um cargo por ID |
+| POST | `/admin/roles` | Criar novo cargo |
+| PUT | `/admin/roles/:id` | Atualizar um cargo |
+| DELETE | `/admin/roles/:id` | Desativar um cargo (soft delete) |
+| GET | `/admin/scrapper/logs/:searchQueryId` | Logs do scraper de uma search query |
+| GET | `/admin/scrapper/jobs/:executionId` | Vagas de uma execução do scraper |
+| GET | `/admin/search-queries` | Listar search queries |
+
 ---
 
 ## Rotas Públicas
@@ -685,6 +698,182 @@ Retorna estatísticas do dashboard do usuário.
 
 ---
 
+## Rotas Admin
+
+Todas as rotas abaixo exigem o header:
+
+```
+Authorization: Bearer <token>
+```
+
+E o usuário autenticado deve possuir a role `Admin`. Caso contrário, retorna `403 Forbidden`.
+
+---
+
+### GET `/admin/roles`
+
+Lista todos os cargos cadastrados (ativos e inativos).
+
+**Response `200 OK`:**
+```json
+{
+  "message": "Cargos listados com sucesso!",
+  "data": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "name": "Admin",
+      "active": true,
+      "createdBy": "550e8400-e29b-41d4-a716-446655440000",
+      "createdAt": "2026-07-03T10:00:00Z",
+      "lastModifiedBy": "550e8400-e29b-41d4-a716-446655440000",
+      "lastModifiedAt": "2026-07-03T10:00:00Z"
+    }
+  ]
+}
+```
+
+---
+
+### GET `/admin/roles/:id`
+
+Retorna um cargo específico.
+
+**Path Parameter:**
+| Parâmetro | Tipo | Descrição |
+|-----------|------|-----------|
+| `id` | UUID | ID do cargo |
+
+**Response `200 OK`:**
+```json
+{
+  "message": "Cargo encontrado com sucesso!",
+  "data": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "name": "Standard",
+    "active": true,
+    "createdBy": "550e8400-e29b-41d4-a716-446655440000",
+    "createdAt": "2026-07-03T10:00:00Z",
+    "lastModifiedBy": "550e8400-e29b-41d4-a716-446655440000",
+    "lastModifiedAt": "2026-07-03T10:00:00Z"
+  }
+}
+```
+
+**Response `404 Not Found`:**
+```json
+{
+  "error": "Cargo não encontrado"
+}
+```
+
+---
+
+### POST `/admin/roles`
+
+Cria um novo cargo.
+
+**Request:**
+```json
+{
+  "name": "Recruiter"
+}
+```
+
+Validações:
+- `name`: obrigatório, máx. 50 caracteres
+
+**Response `201 Created`:**
+```json
+{
+  "message": "Cargo criado com sucesso!"
+}
+```
+
+**Response `409 Conflict` (nome já existente):**
+```json
+{
+  "error": "Cargo já existe"
+}
+```
+
+**Response `400 Bad Request` (validação):**
+```json
+{
+  "errors": {
+    "name": "Este campo é obrigatório"
+  }
+}
+```
+
+---
+
+### PUT `/admin/roles/:id`
+
+Atualiza o nome e status de um cargo.
+
+**Path Parameter:**
+| Parâmetro | Tipo | Descrição |
+|-----------|------|-----------|
+| `id` | UUID | ID do cargo |
+
+**Request:**
+```json
+{
+  "name": "Senior Recruiter",
+  "active": true
+}
+```
+
+> Atenção: `active` é obrigatório no body (bool). Enviar `false` desativa o cargo.
+
+**Response `200 OK`:**
+```json
+{
+  "message": "Cargo atualizado com sucesso!"
+}
+```
+
+**Response `404 Not Found`:**
+```json
+{
+  "error": "Cargo não encontrado"
+}
+```
+
+**Response `409 Conflict` (nome em uso por outro cargo):**
+```json
+{
+  "error": "Já existe um cargo com este nome"
+}
+```
+
+---
+
+### DELETE `/admin/roles/:id`
+
+Desativa um cargo (soft delete). O registro permanece no banco com `active = false`.
+
+**Path Parameter:**
+| Parâmetro | Tipo | Descrição |
+|-----------|------|-----------|
+| `id` | UUID | ID do cargo |
+
+**Response `200 OK`:**
+```json
+{
+  "message": "Cargo desativado com sucesso!"
+}
+```
+
+**Response `404 Not Found`:**
+```json
+{
+  "error": "Cargo não encontrado"
+}
+```
+
+---
+
 ## Middleware Global
 
 - **RequestLogger** — Loga todas as requisições
@@ -697,7 +886,9 @@ Retorna estatísticas do dashboard do usuário.
 |--------|-------------|
 | `400` | Bad Request — corpo inválido, validação, duplicidade |
 | `401` | Unauthorized — token ausente, inválido ou expirado |
+| `403` | Forbidden — usuário sem a role `Admin` |
 | `404` | Not Found — recurso não encontrado |
+| `409` | Conflict — recurso duplicado (ex.: cargo com nome existente) |
 | `500` | Internal Server Error — erro interno do servidor |
 
 ## Variáveis de Ambiente

@@ -148,6 +148,7 @@ func RegisterRoutes(e *echo.Echo, db *database.Database) {
 	})
 
 	admin := private.Group("/admin")
+	admin.Use(middlewares.AdminMiddleware)
 
 	admin.GET("/scrapper/logs/:searchQueryId", func (c *echo.Context) error{
 		return handlers.GetScrapperLogs(c, db)
@@ -159,5 +160,25 @@ func RegisterRoutes(e *echo.Echo, db *database.Database) {
 
 	admin.GET("/search-queries", func (c *echo.Context) error{
 		return handlers.GetSearchQueries(c, db)
+	})
+
+	admin.GET("/roles", func(c *echo.Context) error {
+		return handlers.GetRoles(c, db)
+	})
+
+	admin.GET("/roles/:id", func(c *echo.Context) error {
+		return handlers.GetRoleById(c, db)
+	})
+
+	admin.POST("/roles", func(c *echo.Context) error {
+		return handlers.CreateRole(c, db)
+	})
+
+	admin.PUT("/roles/:id", func(c *echo.Context) error {
+		return handlers.UpdateRole(c, db)
+	})
+
+	admin.DELETE("/roles/:id", func(c *echo.Context) error {
+		return handlers.DeleteRole(c, db)
 	})
 }

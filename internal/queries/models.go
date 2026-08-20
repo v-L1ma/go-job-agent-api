@@ -155,6 +155,16 @@ type Question struct {
 	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
 }
 
+type Role struct {
+	Id             pgtype.UUID        `db:"Id" json:"Id"`
+	Name           string             `db:"Name" json:"Name"`
+	Active         bool               `db:"Active" json:"Active"`
+	CreatedBy      string             `db:"CreatedBy" json:"CreatedBy"`
+	CreatedAt      pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+	LastModifiedBy string             `db:"LastModifiedBy" json:"LastModifiedBy"`
+	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
+}
+
 type ScraperLog struct {
 	Id             pgtype.UUID        `db:"Id" json:"Id"`
 	SearchQueryId  pgtype.UUID        `db:"SearchQueryId" json:"SearchQueryId"`
@@ -193,6 +203,12 @@ type UserCv struct {
 	CreatedAt      pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
 	LastModifiedBy string             `db:"LastModifiedBy" json:"LastModifiedBy"`
 	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
+}
+
+type UserRole struct {
+	Id     pgtype.UUID `db:"Id" json:"Id"`
+	UserId pgtype.UUID `db:"UserId" json:"UserId"`
+	RoleId pgtype.UUID `db:"RoleId" json:"RoleId"`
 }
 
 type UserSearchQuery struct {

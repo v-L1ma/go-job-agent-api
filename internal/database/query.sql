@@ -1,51 +1,240 @@
 -- name: GetJobs :many
-WITH jobs_with_sim AS (
+
+WITH search_config AS (
     SELECT
-        j."Id", j."PlataformJobId", j."Title", j."Description", j."Url", j."IsApplied", j."Status", j."Active", j."CreatedBy", j."CreatedAt", j."LastModifiedBy", j."LastModifiedAt", j."Platform", j."Company", j."TitleEmbedding", j."DescriptionEmbedding",
-        (
-            COALESCE((1 - (j."TitleEmbedding" <=> sq."SearchQueryEmbedding")) * 0.7, 0) +
-            COALESCE((1 - (j."DescriptionEmbedding" <=> sq."SearchQueryEmbedding")) * 0.3, 0)
-        )::double precision AS similarity
-    FROM "Jobs" j
-    JOIN "UserSearchQueries" usq
-        ON usq."UserId" = $1
+        sq."Id",
+        sq."Keywords",
+        sq."Area",
+        sq."Levels",
+        sq."SearchQueryEmbedding"
+    FROM "UserSearchQueries" usq
     JOIN "SearchQueries" sq
         ON sq."Id" = usq."SearchQueryId"
+    WHERE usq."UserId" = $1
+      AND sq."Active" = true
+    LIMIT 1
+),
+jobs_base AS (
+    SELECT
+        j.*,
+        sq."Keywords",
+        sq."Levels",
+        sq."SearchQueryEmbedding"
+
+    FROM "Jobs" j
+    CROSS JOIN search_config sq
     WHERE NOT EXISTS (
-    SELECT 1
-    FROM "Applications" a
-    WHERE a."JobId" = j."Id"
-      AND a."UserId" = $1
+        SELECT 1
+        FROM "Applications" a
+        WHERE a."JobId" = j."Id"
+          AND a."UserId" = $1
     )
     AND NOT EXISTS (
         SELECT 1
         FROM "Applications" a
         WHERE a."JobId" = j."Id"
-        AND a."Status" = 'closed'
-    ) AND (
-         sqlc.narg('platform')::text IS NULL
+          AND a."Status" = 'closed'
+    )
+
+    AND (
+        sqlc.narg('platform')::text IS NULL
         OR j."Platform" = sqlc.narg('platform')::text
     )
+),
+jobs_scored AS (
+    SELECT
+        jb.*,
+        /*
+         * =====================================================
+         * EMBEDDING SCORE
+         *
+         * 70% título
+         * 30% descrição
+         * =====================================================
+         */
+        (
+            COALESCE(
+                (
+                    1 - (
+                        jb."TitleEmbedding"
+                        <=>
+                        jb."SearchQueryEmbedding"
+                    )
+                ) * 0.70,
+                0
+            )
+            +
+            COALESCE(
+                (
+                    1 - (
+                        jb."DescriptionEmbedding"
+                        <=>
+                        jb."SearchQueryEmbedding"
+                    )
+                ) * 0.30,
+                0
+            )
+        )::double precision AS embedding_similarity,
+        /*
+         * =====================================================
+         * KEYWORD SCORE
+         *
+         * Keywords no título têm muito mais peso
+         * que keywords apenas na descrição.
+         * =====================================================
+         */
+        COALESCE(
+            (
+                SELECT MAX(
+                    CASE
+
+                        /*
+                         * Match da frase no título
+                         */
+                        WHEN
+                            to_tsvector(
+                                'simple',
+                                unaccent(
+                                    COALESCE(jb."Title", '')
+                                )
+                            )
+                            @@
+                            phraseto_tsquery(
+                                'simple',
+                                unaccent(keyword)
+                            )
+                        THEN 1.0
+
+                        /*
+                         * Match da frase na descrição
+                         */
+                        WHEN
+                            to_tsvector(
+                                'simple',
+                                unaccent(
+                                    COALESCE(jb."Description", '')
+                                )
+                            )
+                            @@
+                            phraseto_tsquery(
+                                'simple',
+                                unaccent(keyword)
+                            )
+                        THEN 0.4
+
+                        ELSE 0.0
+
+                    END
+                )
+
+                FROM unnest(jb."Keywords") AS keyword
+            ),
+            0
+        )::double precision AS keyword_score,
+        /*
+         * =====================================================
+         * LEVEL SCORE
+         *
+         * Também é um BOOST, não um filtro.
+         * =====================================================
+         */
+        COALESCE(
+            (
+                SELECT MAX(
+                    CASE
+                        /*
+                         * Nível no título
+                         */
+                        WHEN
+                            to_tsvector(
+                                'simple',
+                                unaccent(
+                                    COALESCE(jb."Title", '')
+                                )
+                            )
+                            @@
+                            phraseto_tsquery(
+                                'simple',
+                                unaccent(level)
+                            )
+                        THEN 1.0
+                        /*
+                         * Nível na descrição
+                         */
+                        WHEN
+                            to_tsvector(
+                                'simple',
+                                unaccent(
+                                    COALESCE(jb."Description", '')
+                                )
+                            )
+                            @@
+                            phraseto_tsquery(
+                                'simple',
+                                unaccent(level)
+                            )
+                        THEN 0.3
+                        ELSE 0.0
+                    END
+                )
+                FROM unnest(jb."Levels") AS level
+            ),
+            0
+        )::double precision AS level_score
+    FROM jobs_base jb
+),
+final_jobs AS (
+    SELECT
+        *,
+        /*
+         * =====================================================
+         * FINAL SCORE
+         *
+         * 70% = semântica
+         * 20% = keywords
+         * 10% = nível
+         * =====================================================
+         */
+        (
+            embedding_similarity * 0.70
+            +
+            keyword_score * 0.20
+            +
+            level_score * 0.10
+        )::double precision AS similarity
+    FROM jobs_scored
 )
 SELECT *
-FROM jobs_with_sim
+FROM final_jobs
 WHERE (
     sqlc.narg('cursor_similarity')::float IS NULL
-    OR (similarity, "CreatedAt", "Id") < (sqlc.narg('cursor_similarity')::float, sqlc.narg('cursor_created_at')::timestamptz, sqlc.narg('cursor_id')::uuid)
+    OR (
+        similarity,
+        "CreatedAt",
+        "Id"
+    )
+    <
+    (
+        sqlc.narg('cursor_similarity')::float,
+        sqlc.narg('cursor_created_at')::timestamptz,
+        sqlc.narg('cursor_id')::uuid
+    )
 )
 AND (
     sqlc.narg('min_similarity')::float IS NULL
     OR similarity >= sqlc.narg('min_similarity')::float
 )
 AND NOT EXISTS (
-    SELECT 1 
+    SELECT 1
     FROM "JobEvaluations" je
     WHERE je."UserId" = $1
-     AND je."JobId" = jobs_with_sim."Id"
-     AND je."Liked" = false
-
+      AND je."JobId" = final_jobs."Id"
+      AND je."Liked" = false
 )
-ORDER BY similarity DESC, "CreatedAt" DESC, "Id" DESC
+ORDER BY
+    similarity DESC,
+    "CreatedAt" DESC,
+    "Id" DESC
 LIMIT $2;
 
 -- name: GetJobsWithoutEmbeddings :many
@@ -98,14 +287,18 @@ INSERT INTO "CvEvaluations" ("UserId", "GeneratedCvId", "Liked", "Feedback", "Ac
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);
 
 -- name: GetUserById :one
-SELECT "Id", "Name", "CPF", "Email", "PasswordHash", "AccessFailedCount", "OnboardingCompleted", "LockoutEnd", "LockoutEnabled", "TwoFactorEnabled", "EmailConfirmed", "PhoneNumberConfirmed" 
-FROM public."AspNetUsers"
-WHERE "Id" = $1;
+SELECT u."Id", u."Name", "CPF", "Email", "PasswordHash", "AccessFailedCount", "OnboardingCompleted", "LockoutEnd", "LockoutEnabled", "TwoFactorEnabled", "EmailConfirmed", "PhoneNumberConfirmed", COALESCE(r."Name", 'Standard') AS "RoleName"
+FROM public."AspNetUsers" as u
+LEFT JOIN "UserRoles" ur ON ur."UserId" = u."Id"
+LEFT JOIN "Roles" r ON r."Id" = ur."RoleId"
+WHERE u."Id" = $1;
 
 -- name: GetUserByEmail :one
-SELECT "Id", "Name", "CPF", "Email", "PasswordHash", "AccessFailedCount", "OnboardingCompleted", "LockoutEnd", "LockoutEnabled", "TwoFactorEnabled", "EmailConfirmed", "PhoneNumberConfirmed" 
-FROM public."AspNetUsers"
-WHERE "Email" = $1;
+SELECT u."Id", u."Name", "CPF", "Email", "PasswordHash", "AccessFailedCount", "OnboardingCompleted", "LockoutEnd", "LockoutEnabled", "TwoFactorEnabled", "EmailConfirmed", "PhoneNumberConfirmed", COALESCE(r."Name", 'Standard') AS "RoleName"
+FROM public."AspNetUsers" as u
+LEFT JOIN "UserRoles" ur ON ur."UserId" = u."Id"
+LEFT JOIN "Roles" r ON r."Id" = ur."RoleId"
+WHERE u."Email" = $1;
 
 -- name: ExistsUserById :one
 SELECT EXISTS (
@@ -121,9 +314,10 @@ SELECT EXISTS (
     WHERE "Email" = $1
 ) AS "exists";
 
--- name: CreateUser :exec
+-- name: CreateUser :one
 INSERT INTO "AspNetUsers" ("Name", "CPF", "Email", "PasswordHash", "AccessFailedCount", "OnboardingCompleted", "TwoFactorEnabled", "EmailConfirmed", "PhoneNumberConfirmed", "LockoutEnabled")
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+RETURNING "Id";
 
 -- name: CreateUserPreferences :exec
 INSERT INTO "Preferences" ("UserId", "SimilarityPercent", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt") 
@@ -406,6 +600,56 @@ FROM "ScraperLogs"
 WHERE "SearchQueryId" = $1;
 
 -- name: GetExecutionJobs :many
-SELECT "Id", "Title", "Url", "Platform", "Company"
-FROM "Jobs" 
-WHERE "ExecutionId" = $1;
+SELECT j."Id", j."Title", j."Url", j."Platform", j."Company"
+FROM "Jobs" j
+INNER JOIN "ScraperLogs" sl ON sl."ExecutionId" = j."ExecutionId"
+WHERE j."ExecutionId" = $1;
+
+-- name: CreateRole :exec
+INSERT INTO "Roles" ("Name", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt")
+VALUES ($1, $2, $3, $4, $5, $6);
+
+-- name: UpdateRole :exec
+UPDATE "Roles"
+SET "Name" = $1, "Active" = $2, "LastModifiedBy" = $3, "LastModifiedAt" = $4
+WHERE "Id" = $5;
+
+-- name: GetRoles :many
+SELECT "Id", "Name", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt"
+FROM "Roles";
+
+-- name: ExistsRoleByName :one
+SELECT EXISTS (
+    SELECT 1
+    FROM "Roles"
+    WHERE "Name" = $1 AND (
+        sqlc.narg('id')::uuid IS NULL
+        OR "Id" != sqlc.narg('id')::uuid
+    )
+) AS "exists";
+
+-- name: ExistsRoleById :one
+SELECT EXISTS (
+    SELECT 1
+    FROM "Roles"
+    WHERE "Id" = $1
+) AS "exists";
+
+-- name: GetRoleByName :one
+SELECT "Id", "Name", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt"
+FROM "Roles"
+WHERE "Name" = $1;
+
+-- name: GetRoleById :one
+SELECT "Id", "Name", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt"
+FROM "Roles"
+WHERE "Id" = $1;
+
+-- name: DeactivateRole :exec
+UPDATE "Roles"
+SET "Active" = false, "LastModifiedBy" = $2, "LastModifiedAt" = $3
+WHERE "Id" = $1;
+
+-- name: AssignRoleToUser :exec
+INSERT INTO "UserRoles" ("UserId", "RoleId")
+VALUES ($1, $2);

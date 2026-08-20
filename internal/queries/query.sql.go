@@ -28,6 +28,21 @@ func (q *Queries) AddEmbeddings(ctx context.Context, arg AddEmbeddingsParams) er
 	return err
 }
 
+const assignRoleToUser = `-- name: AssignRoleToUser :exec
+INSERT INTO "UserRoles" ("UserId", "RoleId")
+VALUES ($1, $2)
+`
+
+type AssignRoleToUserParams struct {
+	UserId pgtype.UUID `db:"UserId" json:"UserId"`
+	RoleId pgtype.UUID `db:"RoleId" json:"RoleId"`
+}
+
+func (q *Queries) AssignRoleToUser(ctx context.Context, arg AssignRoleToUserParams) error {
+	_, err := q.db.Exec(ctx, assignRoleToUser, arg.UserId, arg.RoleId)
+	return err
+}
+
 const createApplication = `-- name: CreateApplication :exec
 INSERT INTO "Applications" ("UserId", "JobId", "Status", "Obs", "Platform", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt")
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -144,6 +159,32 @@ func (q *Queries) CreateQuestion(ctx context.Context, arg CreateQuestionParams) 
 	return err
 }
 
+const createRole = `-- name: CreateRole :exec
+INSERT INTO "Roles" ("Name", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt")
+VALUES ($1, $2, $3, $4, $5, $6)
+`
+
+type CreateRoleParams struct {
+	Name           string             `db:"Name" json:"Name"`
+	Active         bool               `db:"Active" json:"Active"`
+	CreatedBy      string             `db:"CreatedBy" json:"CreatedBy"`
+	CreatedAt      pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+	LastModifiedBy string             `db:"LastModifiedBy" json:"LastModifiedBy"`
+	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
+}
+
+func (q *Queries) CreateRole(ctx context.Context, arg CreateRoleParams) error {
+	_, err := q.db.Exec(ctx, createRole,
+		arg.Name,
+		arg.Active,
+		arg.CreatedBy,
+		arg.CreatedAt,
+		arg.LastModifiedBy,
+		arg.LastModifiedAt,
+	)
+	return err
+}
+
 const createSearchQuery = `-- name: CreateSearchQuery :one
 INSERT INTO "SearchQueries" ("Query", "Keywords", "NormalizedHash", "Area", "Levels", "Active", "SearchQueryEmbedding", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt")
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING "Id"
@@ -182,9 +223,10 @@ func (q *Queries) CreateSearchQuery(ctx context.Context, arg CreateSearchQueryPa
 	return Id, err
 }
 
-const createUser = `-- name: CreateUser :exec
+const createUser = `-- name: CreateUser :one
 INSERT INTO "AspNetUsers" ("Name", "CPF", "Email", "PasswordHash", "AccessFailedCount", "OnboardingCompleted", "TwoFactorEnabled", "EmailConfirmed", "PhoneNumberConfirmed", "LockoutEnabled")
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+RETURNING "Id"
 `
 
 type CreateUserParams struct {
@@ -200,8 +242,8 @@ type CreateUserParams struct {
 	LockoutEnabled       bool        `db:"LockoutEnabled" json:"LockoutEnabled"`
 }
 
-func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) error {
-	_, err := q.db.Exec(ctx, createUser,
+func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, createUser,
 		arg.Name,
 		arg.CPF,
 		arg.Email,
@@ -213,7 +255,9 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) error {
 		arg.PhoneNumberConfirmed,
 		arg.LockoutEnabled,
 	)
-	return err
+	var Id pgtype.UUID
+	err := row.Scan(&Id)
+	return Id, err
 }
 
 const createUserPreferences = `-- name: CreateUserPreferences :exec
@@ -257,6 +301,23 @@ type CreateUserSearchQueryParams struct {
 
 func (q *Queries) CreateUserSearchQuery(ctx context.Context, arg CreateUserSearchQueryParams) error {
 	_, err := q.db.Exec(ctx, createUserSearchQuery, arg.UserId, arg.SearchQueryId, arg.CreatedAt)
+	return err
+}
+
+const deactivateRole = `-- name: DeactivateRole :exec
+UPDATE "Roles"
+SET "Active" = false, "LastModifiedBy" = $2, "LastModifiedAt" = $3
+WHERE "Id" = $1
+`
+
+type DeactivateRoleParams struct {
+	Id             pgtype.UUID        `db:"Id" json:"Id"`
+	LastModifiedBy string             `db:"LastModifiedBy" json:"LastModifiedBy"`
+	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
+}
+
+func (q *Queries) DeactivateRole(ctx context.Context, arg DeactivateRoleParams) error {
+	_, err := q.db.Exec(ctx, deactivateRole, arg.Id, arg.LastModifiedBy, arg.LastModifiedAt)
 	return err
 }
 
@@ -359,6 +420,44 @@ type ExistsJobEvaluationParams struct {
 
 func (q *Queries) ExistsJobEvaluation(ctx context.Context, arg ExistsJobEvaluationParams) (bool, error) {
 	row := q.db.QueryRow(ctx, existsJobEvaluation, arg.UserId, arg.JobId)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const existsRoleById = `-- name: ExistsRoleById :one
+SELECT EXISTS (
+    SELECT 1
+    FROM "Roles"
+    WHERE "Id" = $1
+) AS "exists"
+`
+
+func (q *Queries) ExistsRoleById(ctx context.Context, id pgtype.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, existsRoleById, id)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const existsRoleByName = `-- name: ExistsRoleByName :one
+SELECT EXISTS (
+    SELECT 1
+    FROM "Roles"
+    WHERE "Name" = $1 AND (
+        $2::uuid IS NULL
+        OR "Id" != $2::uuid
+    )
+) AS "exists"
+`
+
+type ExistsRoleByNameParams struct {
+	Name string      `db:"Name" json:"Name"`
+	ID   pgtype.UUID `db:"id" json:"id"`
+}
+
+func (q *Queries) ExistsRoleByName(ctx context.Context, arg ExistsRoleByNameParams) (bool, error) {
+	row := q.db.QueryRow(ctx, existsRoleByName, arg.Name, arg.ID)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
@@ -589,9 +688,10 @@ func (q *Queries) GetApplicationsWithQuestions(ctx context.Context, userid pgtyp
 }
 
 const getExecutionJobs = `-- name: GetExecutionJobs :many
-SELECT "Id", "Title", "Url", "Platform", "Company"
-FROM "Jobs" 
-WHERE "ExecutionId" = $1
+SELECT j."Id", j."Title", j."Url", j."Platform", j."Company"
+FROM "Jobs" j
+INNER JOIN "ScraperLogs" sl ON sl."ExecutionId" = j."ExecutionId"
+WHERE j."ExecutionId" = $1
 `
 
 type GetExecutionJobsRow struct {
@@ -737,53 +837,242 @@ func (q *Queries) GetJobById(ctx context.Context, id pgtype.UUID) (GetJobByIdRow
 }
 
 const getJobs = `-- name: GetJobs :many
-WITH jobs_with_sim AS (
+
+WITH search_config AS (
     SELECT
-        j."Id", j."PlataformJobId", j."Title", j."Description", j."Url", j."IsApplied", j."Status", j."Active", j."CreatedBy", j."CreatedAt", j."LastModifiedBy", j."LastModifiedAt", j."Platform", j."Company", j."TitleEmbedding", j."DescriptionEmbedding",
-        (
-            COALESCE((1 - (j."TitleEmbedding" <=> sq."SearchQueryEmbedding")) * 0.7, 0) +
-            COALESCE((1 - (j."DescriptionEmbedding" <=> sq."SearchQueryEmbedding")) * 0.3, 0)
-        )::double precision AS similarity
-    FROM "Jobs" j
-    JOIN "UserSearchQueries" usq
-        ON usq."UserId" = $1
+        sq."Id",
+        sq."Keywords",
+        sq."Area",
+        sq."Levels",
+        sq."SearchQueryEmbedding"
+    FROM "UserSearchQueries" usq
     JOIN "SearchQueries" sq
         ON sq."Id" = usq."SearchQueryId"
+    WHERE usq."UserId" = $1
+      AND sq."Active" = true
+    LIMIT 1
+),
+jobs_base AS (
+    SELECT
+        j."Id", j."PlataformJobId", j."Title", j."Description", j."Url", j."IsApplied", j."Status", j."Active", j."CreatedBy", j."CreatedAt", j."LastModifiedBy", j."LastModifiedAt", j."Platform", j."Company", j."TitleEmbedding", j."DescriptionEmbedding", j."SearchQueryId", j."ExecutionId",
+        sq."Keywords",
+        sq."Levels",
+        sq."SearchQueryEmbedding"
+
+    FROM "Jobs" j
+    CROSS JOIN search_config sq
     WHERE NOT EXISTS (
-    SELECT 1
-    FROM "Applications" a
-    WHERE a."JobId" = j."Id"
-      AND a."UserId" = $1
+        SELECT 1
+        FROM "Applications" a
+        WHERE a."JobId" = j."Id"
+          AND a."UserId" = $1
     )
     AND NOT EXISTS (
         SELECT 1
         FROM "Applications" a
         WHERE a."JobId" = j."Id"
-        AND a."Status" = 'closed'
-    ) AND (
-         $7::text IS NULL
+          AND a."Status" = 'closed'
+    )
+
+    AND (
+        $7::text IS NULL
         OR j."Platform" = $7::text
     )
+),
+jobs_scored AS (
+    SELECT
+        jb."Id", jb."PlataformJobId", jb."Title", jb."Description", jb."Url", jb."IsApplied", jb."Status", jb."Active", jb."CreatedBy", jb."CreatedAt", jb."LastModifiedBy", jb."LastModifiedAt", jb."Platform", jb."Company", jb."TitleEmbedding", jb."DescriptionEmbedding", jb."SearchQueryId", jb."ExecutionId", jb."Keywords", jb."Levels", jb."SearchQueryEmbedding",
+        /*
+         * =====================================================
+         * EMBEDDING SCORE
+         *
+         * 70% título
+         * 30% descrição
+         * =====================================================
+         */
+        (
+            COALESCE(
+                (
+                    1 - (
+                        jb."TitleEmbedding"
+                        <=>
+                        jb."SearchQueryEmbedding"
+                    )
+                ) * 0.70,
+                0
+            )
+            +
+            COALESCE(
+                (
+                    1 - (
+                        jb."DescriptionEmbedding"
+                        <=>
+                        jb."SearchQueryEmbedding"
+                    )
+                ) * 0.30,
+                0
+            )
+        )::double precision AS embedding_similarity,
+        /*
+         * =====================================================
+         * KEYWORD SCORE
+         *
+         * Keywords no título têm muito mais peso
+         * que keywords apenas na descrição.
+         * =====================================================
+         */
+        COALESCE(
+            (
+                SELECT MAX(
+                    CASE
+
+                        /*
+                         * Match da frase no título
+                         */
+                        WHEN
+                            to_tsvector(
+                                'simple',
+                                unaccent(
+                                    COALESCE(jb."Title", '')
+                                )
+                            )
+                            @@
+                            phraseto_tsquery(
+                                'simple',
+                                unaccent(keyword)
+                            )
+                        THEN 1.0
+
+                        /*
+                         * Match da frase na descrição
+                         */
+                        WHEN
+                            to_tsvector(
+                                'simple',
+                                unaccent(
+                                    COALESCE(jb."Description", '')
+                                )
+                            )
+                            @@
+                            phraseto_tsquery(
+                                'simple',
+                                unaccent(keyword)
+                            )
+                        THEN 0.4
+
+                        ELSE 0.0
+
+                    END
+                )
+
+                FROM unnest(jb."Keywords") AS keyword
+            ),
+            0
+        )::double precision AS keyword_score,
+        /*
+         * =====================================================
+         * LEVEL SCORE
+         *
+         * Também é um BOOST, não um filtro.
+         * =====================================================
+         */
+        COALESCE(
+            (
+                SELECT MAX(
+                    CASE
+                        /*
+                         * Nível no título
+                         */
+                        WHEN
+                            to_tsvector(
+                                'simple',
+                                unaccent(
+                                    COALESCE(jb."Title", '')
+                                )
+                            )
+                            @@
+                            phraseto_tsquery(
+                                'simple',
+                                unaccent(level)
+                            )
+                        THEN 1.0
+                        /*
+                         * Nível na descrição
+                         */
+                        WHEN
+                            to_tsvector(
+                                'simple',
+                                unaccent(
+                                    COALESCE(jb."Description", '')
+                                )
+                            )
+                            @@
+                            phraseto_tsquery(
+                                'simple',
+                                unaccent(level)
+                            )
+                        THEN 0.3
+                        ELSE 0.0
+                    END
+                )
+                FROM unnest(jb."Levels") AS level
+            ),
+            0
+        )::double precision AS level_score
+    FROM jobs_base jb
+),
+final_jobs AS (
+    SELECT
+        "Id", "PlataformJobId", "Title", "Description", "Url", "IsApplied", "Status", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt", "Platform", "Company", "TitleEmbedding", "DescriptionEmbedding", "SearchQueryId", "ExecutionId", "Keywords", "Levels", "SearchQueryEmbedding", embedding_similarity, keyword_score, level_score,
+        /*
+         * =====================================================
+         * FINAL SCORE
+         *
+         * 70% = semântica
+         * 20% = keywords
+         * 10% = nível
+         * =====================================================
+         */
+        (
+            embedding_similarity * 0.70
+            +
+            keyword_score * 0.20
+            +
+            level_score * 0.10
+        )::double precision AS similarity
+    FROM jobs_scored
 )
-SELECT "Id", "PlataformJobId", "Title", "Description", "Url", "IsApplied", "Status", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt", "Platform", "Company", "TitleEmbedding", "DescriptionEmbedding", similarity
-FROM jobs_with_sim
+SELECT "Id", "PlataformJobId", "Title", "Description", "Url", "IsApplied", "Status", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt", "Platform", "Company", "TitleEmbedding", "DescriptionEmbedding", "SearchQueryId", "ExecutionId", "Keywords", "Levels", "SearchQueryEmbedding", embedding_similarity, keyword_score, level_score, similarity
+FROM final_jobs
 WHERE (
     $3::float IS NULL
-    OR (similarity, "CreatedAt", "Id") < ($3::float, $4::timestamptz, $5::uuid)
+    OR (
+        similarity,
+        "CreatedAt",
+        "Id"
+    )
+    <
+    (
+        $3::float,
+        $4::timestamptz,
+        $5::uuid
+    )
 )
 AND (
     $6::float IS NULL
     OR similarity >= $6::float
 )
 AND NOT EXISTS (
-    SELECT 1 
+    SELECT 1
     FROM "JobEvaluations" je
     WHERE je."UserId" = $1
-     AND je."JobId" = jobs_with_sim."Id"
-     AND je."Liked" = false
-
+      AND je."JobId" = final_jobs."Id"
+      AND je."Liked" = false
 )
-ORDER BY similarity DESC, "CreatedAt" DESC, "Id" DESC
+ORDER BY
+    similarity DESC,
+    "CreatedAt" DESC,
+    "Id" DESC
 LIMIT $2
 `
 
@@ -814,6 +1103,14 @@ type GetJobsRow struct {
 	Company              string             `db:"Company" json:"Company"`
 	TitleEmbedding       interface{}        `db:"TitleEmbedding" json:"TitleEmbedding"`
 	DescriptionEmbedding interface{}        `db:"DescriptionEmbedding" json:"DescriptionEmbedding"`
+	SearchQueryId        pgtype.UUID        `db:"SearchQueryId" json:"SearchQueryId"`
+	ExecutionId          pgtype.UUID        `db:"ExecutionId" json:"ExecutionId"`
+	Keywords             []string           `db:"Keywords" json:"Keywords"`
+	Levels               []string           `db:"Levels" json:"Levels"`
+	SearchQueryEmbedding interface{}        `db:"SearchQueryEmbedding" json:"SearchQueryEmbedding"`
+	EmbeddingSimilarity  float64            `db:"embedding_similarity" json:"embedding_similarity"`
+	KeywordScore         float64            `db:"keyword_score" json:"keyword_score"`
+	LevelScore           float64            `db:"level_score" json:"level_score"`
 	Similarity           float64            `db:"similarity" json:"similarity"`
 }
 
@@ -851,6 +1148,14 @@ func (q *Queries) GetJobs(ctx context.Context, arg GetJobsParams) ([]GetJobsRow,
 			&i.Company,
 			&i.TitleEmbedding,
 			&i.DescriptionEmbedding,
+			&i.SearchQueryId,
+			&i.ExecutionId,
+			&i.Keywords,
+			&i.Levels,
+			&i.SearchQueryEmbedding,
+			&i.EmbeddingSimilarity,
+			&i.KeywordScore,
+			&i.LevelScore,
 			&i.Similarity,
 		); err != nil {
 			return nil, err
@@ -999,6 +1304,81 @@ func (q *Queries) GetQuestionById(ctx context.Context, id pgtype.UUID) (GetQuest
 	var i GetQuestionByIdRow
 	err := row.Scan(&i.Question, &i.Answer, &i.UserId)
 	return i, err
+}
+
+const getRoleById = `-- name: GetRoleById :one
+SELECT "Id", "Name", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt"
+FROM "Roles"
+WHERE "Id" = $1
+`
+
+func (q *Queries) GetRoleById(ctx context.Context, id pgtype.UUID) (Role, error) {
+	row := q.db.QueryRow(ctx, getRoleById, id)
+	var i Role
+	err := row.Scan(
+		&i.Id,
+		&i.Name,
+		&i.Active,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.LastModifiedBy,
+		&i.LastModifiedAt,
+	)
+	return i, err
+}
+
+const getRoleByName = `-- name: GetRoleByName :one
+SELECT "Id", "Name", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt"
+FROM "Roles"
+WHERE "Name" = $1
+`
+
+func (q *Queries) GetRoleByName(ctx context.Context, name string) (Role, error) {
+	row := q.db.QueryRow(ctx, getRoleByName, name)
+	var i Role
+	err := row.Scan(
+		&i.Id,
+		&i.Name,
+		&i.Active,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.LastModifiedBy,
+		&i.LastModifiedAt,
+	)
+	return i, err
+}
+
+const getRoles = `-- name: GetRoles :many
+SELECT "Id", "Name", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt"
+FROM "Roles"
+`
+
+func (q *Queries) GetRoles(ctx context.Context) ([]Role, error) {
+	rows, err := q.db.Query(ctx, getRoles)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Role
+	for rows.Next() {
+		var i Role
+		if err := rows.Scan(
+			&i.Id,
+			&i.Name,
+			&i.Active,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.LastModifiedBy,
+			&i.LastModifiedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getScrapperLogs = `-- name: GetScrapperLogs :many
@@ -1192,14 +1572,32 @@ func (q *Queries) GetSearchQueryScrapperLogs(ctx context.Context, searchqueryid 
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT "Id", "Name", "CPF", "Email", "PasswordHash", "AccessFailedCount", "OnboardingCompleted", "LockoutEnd", "LockoutEnabled", "TwoFactorEnabled", "EmailConfirmed", "PhoneNumberConfirmed" 
-FROM public."AspNetUsers"
-WHERE "Email" = $1
+SELECT u."Id", u."Name", "CPF", "Email", "PasswordHash", "AccessFailedCount", "OnboardingCompleted", "LockoutEnd", "LockoutEnabled", "TwoFactorEnabled", "EmailConfirmed", "PhoneNumberConfirmed", COALESCE(r."Name", 'Standard') AS "RoleName"
+FROM public."AspNetUsers" as u
+LEFT JOIN "UserRoles" ur ON ur."UserId" = u."Id"
+LEFT JOIN "Roles" r ON r."Id" = ur."RoleId"
+WHERE u."Email" = $1
 `
 
-func (q *Queries) GetUserByEmail(ctx context.Context, email pgtype.Text) (AspNetUser, error) {
+type GetUserByEmailRow struct {
+	Id                   pgtype.UUID        `db:"Id" json:"Id"`
+	Name                 string             `db:"Name" json:"Name"`
+	CPF                  string             `db:"CPF" json:"CPF"`
+	Email                pgtype.Text        `db:"Email" json:"Email"`
+	PasswordHash         pgtype.Text        `db:"PasswordHash" json:"PasswordHash"`
+	AccessFailedCount    int32              `db:"AccessFailedCount" json:"AccessFailedCount"`
+	OnboardingCompleted  bool               `db:"OnboardingCompleted" json:"OnboardingCompleted"`
+	LockoutEnd           pgtype.Timestamptz `db:"LockoutEnd" json:"LockoutEnd"`
+	LockoutEnabled       bool               `db:"LockoutEnabled" json:"LockoutEnabled"`
+	TwoFactorEnabled     bool               `db:"TwoFactorEnabled" json:"TwoFactorEnabled"`
+	EmailConfirmed       bool               `db:"EmailConfirmed" json:"EmailConfirmed"`
+	PhoneNumberConfirmed bool               `db:"PhoneNumberConfirmed" json:"PhoneNumberConfirmed"`
+	RoleName             string             `db:"RoleName" json:"RoleName"`
+}
+
+func (q *Queries) GetUserByEmail(ctx context.Context, email pgtype.Text) (GetUserByEmailRow, error) {
 	row := q.db.QueryRow(ctx, getUserByEmail, email)
-	var i AspNetUser
+	var i GetUserByEmailRow
 	err := row.Scan(
 		&i.Id,
 		&i.Name,
@@ -1213,19 +1611,38 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email pgtype.Text) (AspNet
 		&i.TwoFactorEnabled,
 		&i.EmailConfirmed,
 		&i.PhoneNumberConfirmed,
+		&i.RoleName,
 	)
 	return i, err
 }
 
 const getUserById = `-- name: GetUserById :one
-SELECT "Id", "Name", "CPF", "Email", "PasswordHash", "AccessFailedCount", "OnboardingCompleted", "LockoutEnd", "LockoutEnabled", "TwoFactorEnabled", "EmailConfirmed", "PhoneNumberConfirmed" 
-FROM public."AspNetUsers"
-WHERE "Id" = $1
+SELECT u."Id", u."Name", "CPF", "Email", "PasswordHash", "AccessFailedCount", "OnboardingCompleted", "LockoutEnd", "LockoutEnabled", "TwoFactorEnabled", "EmailConfirmed", "PhoneNumberConfirmed", COALESCE(r."Name", 'Standard') AS "RoleName"
+FROM public."AspNetUsers" as u
+LEFT JOIN "UserRoles" ur ON ur."UserId" = u."Id"
+LEFT JOIN "Roles" r ON r."Id" = ur."RoleId"
+WHERE u."Id" = $1
 `
 
-func (q *Queries) GetUserById(ctx context.Context, id pgtype.UUID) (AspNetUser, error) {
+type GetUserByIdRow struct {
+	Id                   pgtype.UUID        `db:"Id" json:"Id"`
+	Name                 string             `db:"Name" json:"Name"`
+	CPF                  string             `db:"CPF" json:"CPF"`
+	Email                pgtype.Text        `db:"Email" json:"Email"`
+	PasswordHash         pgtype.Text        `db:"PasswordHash" json:"PasswordHash"`
+	AccessFailedCount    int32              `db:"AccessFailedCount" json:"AccessFailedCount"`
+	OnboardingCompleted  bool               `db:"OnboardingCompleted" json:"OnboardingCompleted"`
+	LockoutEnd           pgtype.Timestamptz `db:"LockoutEnd" json:"LockoutEnd"`
+	LockoutEnabled       bool               `db:"LockoutEnabled" json:"LockoutEnabled"`
+	TwoFactorEnabled     bool               `db:"TwoFactorEnabled" json:"TwoFactorEnabled"`
+	EmailConfirmed       bool               `db:"EmailConfirmed" json:"EmailConfirmed"`
+	PhoneNumberConfirmed bool               `db:"PhoneNumberConfirmed" json:"PhoneNumberConfirmed"`
+	RoleName             string             `db:"RoleName" json:"RoleName"`
+}
+
+func (q *Queries) GetUserById(ctx context.Context, id pgtype.UUID) (GetUserByIdRow, error) {
 	row := q.db.QueryRow(ctx, getUserById, id)
-	var i AspNetUser
+	var i GetUserByIdRow
 	err := row.Scan(
 		&i.Id,
 		&i.Name,
@@ -1239,6 +1656,7 @@ func (q *Queries) GetUserById(ctx context.Context, id pgtype.UUID) (AspNetUser, 
 		&i.TwoFactorEnabled,
 		&i.EmailConfirmed,
 		&i.PhoneNumberConfirmed,
+		&i.RoleName,
 	)
 	return i, err
 }
@@ -1463,6 +1881,31 @@ type UpdateQuestionAnswerParams struct {
 
 func (q *Queries) UpdateQuestionAnswer(ctx context.Context, arg UpdateQuestionAnswerParams) error {
 	_, err := q.db.Exec(ctx, updateQuestionAnswer, arg.Id, arg.Answer)
+	return err
+}
+
+const updateRole = `-- name: UpdateRole :exec
+UPDATE "Roles"
+SET "Name" = $1, "Active" = $2, "LastModifiedBy" = $3, "LastModifiedAt" = $4
+WHERE "Id" = $5
+`
+
+type UpdateRoleParams struct {
+	Name           string             `db:"Name" json:"Name"`
+	Active         bool               `db:"Active" json:"Active"`
+	LastModifiedBy string             `db:"LastModifiedBy" json:"LastModifiedBy"`
+	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
+	Id             pgtype.UUID        `db:"Id" json:"Id"`
+}
+
+func (q *Queries) UpdateRole(ctx context.Context, arg UpdateRoleParams) error {
+	_, err := q.db.Exec(ctx, updateRole,
+		arg.Name,
+		arg.Active,
+		arg.LastModifiedBy,
+		arg.LastModifiedAt,
+		arg.Id,
+	)
 	return err
 }
 

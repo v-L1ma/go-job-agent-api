@@ -31,19 +31,22 @@ func CheckPassword(password string, hash string) error {
 type Claims struct {
     UserID string `json:"user_id"`
     Email  string `json:"email"`
+    Role   string  `json:"role"`
+    Name   string `json:"name"`
 
     jwt.RegisteredClaims
 }
 
-func GenerateToken(user sqlc.AspNetUser) (string, error) {
+func GenerateToken(user sqlc.GetUserByEmailRow) (string, error) {
 
     claims := Claims{
         UserID: user.Id.String(),
         Email: user.Email.String,
-
+        Role: user.RoleName,
+        Name: user.Name,
         RegisteredClaims: jwt.RegisteredClaims{
             ExpiresAt: jwt.NewNumericDate(
-                time.Now().Add(15 * time.Minute),
+                time.Now().Add(15 * time.Hour),
             ),
             IssuedAt: jwt.NewNumericDate(time.Now()),
         },

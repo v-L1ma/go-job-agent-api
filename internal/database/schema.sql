@@ -1,3 +1,5 @@
+CREATE EXTENSION IF NOT EXISTS unaccent;
+
 create table public."Jobs" (
   "Id" uuid not null,
   "PlataformJobId" text not null,
@@ -234,3 +236,26 @@ create table public."ScraperLogs" (
   constraint pk_scraperlogs primary key ("Id"),
   constraint fk_scraperlogs_searchqueries_searchqueryid foreign KEY ("SearchQueryId") references "SearchQueries" ("Id") on delete set null
 ) TABLESPACE pg_default;
+
+create table public."Roles" (
+  "Id" uuid not null default gen_random_uuid (),
+  "Name" text not null,
+  "Active" boolean not null,
+  "CreatedBy" text not null,
+  "CreatedAt" timestamp with time zone not null,
+  "LastModifiedBy" text not null,
+  "LastModifiedAt" timestamp with time zone not null,
+  constraint pk_roles primary key ("Id"),
+  constraint uq_roles_name unique ("Name")
+) TABLESPACE pg_default;
+
+create table public."UserRoles" (
+  "Id" uuid not null default gen_random_uuid (),
+  "UserId" uuid not null,
+  "RoleId" uuid not null,
+  constraint pk_userroles primary key ("UserId", "RoleId"),
+  constraint fk_userroles_users_userid foreign key ("UserId") references "AspNetUsers" ("Id") on delete cascade,
+  constraint fk_userroles_roles_roleid foreign key ("RoleId") references "Roles" ("Id") on delete cascade
+) TABLESPACE pg_default;
+
+CREATE EXTENSION IF NOT EXISTS unaccent;
