@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"errors"
+	"fmt"
 	"job-agent-api/internal/database"
 	"job-agent-api/internal/dto"
 	"job-agent-api/internal/helpers"
@@ -10,7 +12,9 @@ import (
 	"os"
 	"time"
 
+	"cloud.google.com/go/auth/credentials/idtoken"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/labstack/echo/v5"
 )
@@ -62,13 +66,113 @@ func Login(c *echo.Context, db *database.Database) error {
 		"token":               token,
 	})
 }
+
+func LoginGoogle(c *echo.Context, db *database.Database) error {
+	var req dto.LoginGoogleRequest
+
+	if err := c.Bind(&req); err != nil {
+		fmt.Printf("Erro ao fazer bind do request: %v\n", err)
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "requisição inválida",
+		})
+	}
+
+	if req.IDToken == "" {
+		fmt.Print("Id nao fornecido")
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "idToken é obrigatório",
+		})
+	}
+	fmt.Printf("ID Token: %s\n", req.IDToken)
+
+	payload, err := idtoken.Validate(
+		c.Request().Context(),
+		req.IDToken,
+		os.Getenv("GOOGLE_CLIENT_ID"),
+	)
+
+	if err != nil {
+		fmt.Printf("Erro ao validar o ID Token: %v\n", err)
+		return c.JSON(http.StatusUnauthorized, map[string]string{
+			"error": "Google ID Token inválido",
+		})
+	}
+
+	// Dados validados pelo Google
+	googleID := payload.Subject
+	email, _ := payload.Claims["email"].(string)
+	name, _ := payload.Claims["name"].(string)
+	picture, _ := payload.Claims["picture"].(string)
+
+	// Aqui você procura/cria o usuário no seu banco.
+	// ...
+	fmt.Printf("")
+	fmt.Printf("Google ID: %s, Email: %s, Name: %s, Picture: %s\n", googleID, email, name, picture)
+	fmt.Printf("")
+
+	user, err := db.Query.GetUserByEmail(c.Request().Context(), pgtype.Text{String: email, Valid: true})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+
+			_, err := db.Query.CreateUser(c.Request().Context(), sqlc.CreateUserParams{
+				Name:                name,
+				CPF:                 "",
+				Email:               pgtype.Text{String: email, Valid: true},
+				TwoFactorEnabled:    false,
+				EmailConfirmed:      true,
+				LockoutEnabled:      false,
+				AccessFailedCount:   0,
+				OnboardingCompleted: false,
+				PasswordHash:        pgtype.Text{String: "", Valid: true},
+			})
+			if err != nil {
+				return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+			}
+
+			role, err := db.Query.GetRoleByName(c.Request().Context(), "Standard")
+			if err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			}
+
+			userByEmail, err := db.Query.GetUserByEmail(c.Request().Context(), pgtype.Text{String: email, Valid: true})
+			if err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			}
+
+			err = db.Query.AssignRoleToUser(c.Request().Context(), sqlc.AssignRoleToUserParams{
+				UserId: userByEmail.Id,
+				RoleId: role.Id,
+			})
+			if err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			}
+
+			user = userByEmail
+		} else {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+	}
+
+	hasUploadedCv, err := db.Query.ExistsUploadedCv(c.Request().Context(), user.Id)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{
-		"message": "Login efetuado com sucesso!",
-		"token":   token,
+	preferences, err := db.Query.GetUserPreferences(c.Request().Context(), user.Id)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	hasCompletedOnboarding := hasUploadedCv && len(preferences.Keywords) > 0 && len(preferences.Levels) > 0
+
+	token, err := services.GenerateToken(user, hasCompletedOnboarding)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]any{
+		"message":             "Login efetuado com sucesso!",
+		"token":               token,
 	})
 }
 

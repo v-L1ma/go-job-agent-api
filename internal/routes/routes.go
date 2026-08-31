@@ -44,6 +44,10 @@ func RegisterRoutes(e *echo.Echo, db *database.Database) {
 		return handlers.Login(c, db)
 	})
 
+	api.POST("/login/google", func(c *echo.Context) error {
+		return handlers.LoginGoogle(c, db)
+	})
+
 	api.POST("/register", func(c *echo.Context) error {
 		return handlers.Register(c, db)
 	})
