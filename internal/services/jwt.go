@@ -33,17 +33,19 @@ type Claims struct {
     Email  string `json:"email"`
     Role   string  `json:"role"`
     Name   string `json:"name"`
+    OnboardingCompleted bool `json:"onboardingCompleted"`
 
     jwt.RegisteredClaims
 }
 
-func GenerateToken(user sqlc.GetUserByEmailRow) (string, error) {
+func GenerateToken(user sqlc.GetUserByEmailRow, onboardingCompleted bool) (string, error) {
 
     claims := Claims{
         UserID: user.Id.String(),
         Email: user.Email.String,
         Role: user.RoleName,
         Name: user.Name,
+        OnboardingCompleted: onboardingCompleted,
         RegisteredClaims: jwt.RegisteredClaims{
             ExpiresAt: jwt.NewNumericDate(
                 time.Now().Add(15 * time.Hour),

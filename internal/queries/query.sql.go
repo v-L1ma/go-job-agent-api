@@ -499,6 +499,21 @@ func (q *Queries) ExistsSearchQueryByUserId(ctx context.Context, userid pgtype.U
 	return exists, err
 }
 
+const existsUploadedCv = `-- name: ExistsUploadedCv :one
+SELECT EXISTS(
+    SELECT 1 
+    FROM "UserCvs" 
+    WHERE "UserId" = $1
+) AS "exists"
+`
+
+func (q *Queries) ExistsUploadedCv(ctx context.Context, userid pgtype.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, existsUploadedCv, userid)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const existsUserByEmail = `-- name: ExistsUserByEmail :one
 SELECT EXISTS (
     SELECT 1
@@ -753,18 +768,20 @@ func (q *Queries) GetGeneratedCvById(ctx context.Context, id pgtype.UUID) (GetGe
 }
 
 const getGeneratedCvs = `-- name: GetGeneratedCvs :many
-SELECT "UserId", "JobId", j."Title", cv."FileName", "ExtractedText"
+SELECT cv."Id", "UserId", "JobId", j."Title", cv."FileName", "ExtractedText", cv."CreatedAt"
 FROM "GeneratedCvsNew" as cv
 LEFT JOIN "Jobs" as j ON cv."JobId" = j."Id" 
 WHERE "UserId" = $1
 `
 
 type GetGeneratedCvsRow struct {
-	UserId        pgtype.UUID `db:"UserId" json:"UserId"`
-	JobId         pgtype.UUID `db:"JobId" json:"JobId"`
-	Title         pgtype.Text `db:"Title" json:"Title"`
-	FileName      string      `db:"FileName" json:"FileName"`
-	ExtractedText string      `db:"ExtractedText" json:"ExtractedText"`
+	Id            pgtype.UUID        `db:"Id" json:"Id"`
+	UserId        pgtype.UUID        `db:"UserId" json:"UserId"`
+	JobId         pgtype.UUID        `db:"JobId" json:"JobId"`
+	Title         pgtype.Text        `db:"Title" json:"Title"`
+	FileName      string             `db:"FileName" json:"FileName"`
+	ExtractedText string             `db:"ExtractedText" json:"ExtractedText"`
+	CreatedAt     pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
 }
 
 func (q *Queries) GetGeneratedCvs(ctx context.Context, userid pgtype.UUID) ([]GetGeneratedCvsRow, error) {
@@ -777,11 +794,13 @@ func (q *Queries) GetGeneratedCvs(ctx context.Context, userid pgtype.UUID) ([]Ge
 	for rows.Next() {
 		var i GetGeneratedCvsRow
 		if err := rows.Scan(
+			&i.Id,
 			&i.UserId,
 			&i.JobId,
 			&i.Title,
 			&i.FileName,
 			&i.ExtractedText,
+			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}

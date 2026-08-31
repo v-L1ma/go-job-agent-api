@@ -40,7 +40,28 @@ func Login(c *echo.Context, db *database.Database) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Email e/ou senha inválidos."})
 	}
 
-	token, err := services.GenerateToken(user)
+	hasUploadedCv, err := db.Query.ExistsUploadedCv(c.Request().Context(), user.Id)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	preferences, err := db.Query.GetUserPreferences(c.Request().Context(), user.Id)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	hasCompletedOnboarding := hasUploadedCv && len(preferences.Keywords) > 0 && len(preferences.Levels) > 0
+
+	token, err := services.GenerateToken(user, hasCompletedOnboarding)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]any{
+		"message":             "Login efetuado com sucesso!",
+		"token":               token,
+	})
+}
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}

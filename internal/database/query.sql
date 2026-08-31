@@ -371,7 +371,7 @@ SELECT "UserId", "JobId", "FileName", "ExtractedText"
 FROM "GeneratedCvsNew" WHERE "Id" = $1;
 
 -- name: GetGeneratedCvs :many
-SELECT "UserId", "JobId", j."Title", cv."FileName", "ExtractedText"
+SELECT cv."Id", "UserId", "JobId", j."Title", cv."FileName", "ExtractedText", cv."CreatedAt"
 FROM "GeneratedCvsNew" as cv
 LEFT JOIN "Jobs" as j ON cv."JobId" = j."Id" 
 WHERE "UserId" = $1;
@@ -653,3 +653,10 @@ WHERE "Id" = $1;
 -- name: AssignRoleToUser :exec
 INSERT INTO "UserRoles" ("UserId", "RoleId")
 VALUES ($1, $2);
+
+-- name: ExistsUploadedCv :one
+SELECT EXISTS(
+    SELECT 1 
+    FROM "UserCvs" 
+    WHERE "UserId" = $1
+) AS "exists";
