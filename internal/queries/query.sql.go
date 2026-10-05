@@ -123,6 +123,34 @@ func (q *Queries) CreatePasswordResetToken(ctx context.Context, arg CreatePasswo
 	return err
 }
 
+const createPlan = `-- name: CreatePlan :exec
+INSERT INTO "Plans" ("Name", "Description", "Price", "StripePrice_id", "StripeProduct_id", "RoleId", "Active")
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+`
+
+type CreatePlanParams struct {
+	Name            string      `db:"Name" json:"Name"`
+	Description     pgtype.Text `db:"Description" json:"Description"`
+	Price           int32       `db:"Price" json:"Price"`
+	StripePriceID   pgtype.Text `db:"StripePrice_id" json:"StripePrice_id"`
+	StripeProductID string      `db:"StripeProduct_id" json:"StripeProduct_id"`
+	RoleId          pgtype.UUID `db:"RoleId" json:"RoleId"`
+	Active          bool        `db:"Active" json:"Active"`
+}
+
+func (q *Queries) CreatePlan(ctx context.Context, arg CreatePlanParams) error {
+	_, err := q.db.Exec(ctx, createPlan,
+		arg.Name,
+		arg.Description,
+		arg.Price,
+		arg.StripePriceID,
+		arg.StripeProductID,
+		arg.RoleId,
+		arg.Active,
+	)
+	return err
+}
+
 const createQuestion = `-- name: CreateQuestion :exec
 INSERT INTO "Questions" ("UserId", "JobId", "Question", "Type", "Options", "Answer", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt")
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
@@ -223,6 +251,48 @@ func (q *Queries) CreateSearchQuery(ctx context.Context, arg CreateSearchQueryPa
 	return Id, err
 }
 
+const createSubscription = `-- name: CreateSubscription :exec
+INSERT INTO "Subscriptions" ("Id", "UserId", "PlanId", "StripeCustomer_id", "StripeSubscription_id", "StripeCheckoutSession_id", "StripePrice_id", "Status", "CurrentPeriodStart", "CurrentPeriodEnd", "CancelAtPeriodEnd", "CanceledAt", "CreatedAt", "UpdatedAt")
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+`
+
+type CreateSubscriptionParams struct {
+	Id                      pgtype.UUID      `db:"Id" json:"Id"`
+	UserId                  pgtype.UUID      `db:"UserId" json:"UserId"`
+	PlanId                  pgtype.UUID      `db:"PlanId" json:"PlanId"`
+	StripeCustomerID        string           `db:"StripeCustomer_id" json:"StripeCustomer_id"`
+	StripeSubscriptionID    string           `db:"StripeSubscription_id" json:"StripeSubscription_id"`
+	StripeCheckoutSessionID pgtype.Text      `db:"StripeCheckoutSession_id" json:"StripeCheckoutSession_id"`
+	StripePriceID           string           `db:"StripePrice_id" json:"StripePrice_id"`
+	Status                  string           `db:"Status" json:"Status"`
+	CurrentPeriodStart      pgtype.Timestamp `db:"CurrentPeriodStart" json:"CurrentPeriodStart"`
+	CurrentPeriodEnd        pgtype.Timestamp `db:"CurrentPeriodEnd" json:"CurrentPeriodEnd"`
+	CancelAtPeriodEnd       bool             `db:"CancelAtPeriodEnd" json:"CancelAtPeriodEnd"`
+	CanceledAt              pgtype.Timestamp `db:"CanceledAt" json:"CanceledAt"`
+	CreatedAt               pgtype.Timestamp `db:"CreatedAt" json:"CreatedAt"`
+	UpdatedAt               pgtype.Timestamp `db:"UpdatedAt" json:"UpdatedAt"`
+}
+
+func (q *Queries) CreateSubscription(ctx context.Context, arg CreateSubscriptionParams) error {
+	_, err := q.db.Exec(ctx, createSubscription,
+		arg.Id,
+		arg.UserId,
+		arg.PlanId,
+		arg.StripeCustomerID,
+		arg.StripeSubscriptionID,
+		arg.StripeCheckoutSessionID,
+		arg.StripePriceID,
+		arg.Status,
+		arg.CurrentPeriodStart,
+		arg.CurrentPeriodEnd,
+		arg.CancelAtPeriodEnd,
+		arg.CanceledAt,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	return err
+}
+
 const createUser = `-- name: CreateUser :one
 INSERT INTO "AspNetUsers" ("Name", "CPF", "Email", "PasswordHash", "AccessFailedCount", "OnboardingCompleted", "TwoFactorEnabled", "EmailConfirmed", "PhoneNumberConfirmed", "LockoutEnabled")
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -304,6 +374,22 @@ func (q *Queries) CreateUserSearchQuery(ctx context.Context, arg CreateUserSearc
 	return err
 }
 
+const deactivatePlan = `-- name: DeactivatePlan :exec
+UPDATE "Plans"
+SET "Active" = false, "UpdatedAt" = $2
+WHERE "StripeProduct_id" = $1
+`
+
+type DeactivatePlanParams struct {
+	StripeProductID string           `db:"StripeProduct_id" json:"StripeProduct_id"`
+	UpdatedAt       pgtype.Timestamp `db:"UpdatedAt" json:"UpdatedAt"`
+}
+
+func (q *Queries) DeactivatePlan(ctx context.Context, arg DeactivatePlanParams) error {
+	_, err := q.db.Exec(ctx, deactivatePlan, arg.StripeProductID, arg.UpdatedAt)
+	return err
+}
+
 const deactivateRole = `-- name: DeactivateRole :exec
 UPDATE "Roles"
 SET "Active" = false, "LastModifiedBy" = $2, "LastModifiedAt" = $3
@@ -318,6 +404,17 @@ type DeactivateRoleParams struct {
 
 func (q *Queries) DeactivateRole(ctx context.Context, arg DeactivateRoleParams) error {
 	_, err := q.db.Exec(ctx, deactivateRole, arg.Id, arg.LastModifiedBy, arg.LastModifiedAt)
+	return err
+}
+
+const deactivateSubscription = `-- name: DeactivateSubscription :exec
+UPDATE "Subscriptions"
+SET "Active" = false
+WHERE "Id" = $1
+`
+
+func (q *Queries) DeactivateSubscription(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deactivateSubscription, id)
 	return err
 }
 
@@ -420,6 +517,21 @@ type ExistsJobEvaluationParams struct {
 
 func (q *Queries) ExistsJobEvaluation(ctx context.Context, arg ExistsJobEvaluationParams) (bool, error) {
 	row := q.db.QueryRow(ctx, existsJobEvaluation, arg.UserId, arg.JobId)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const existsPlanByProductId = `-- name: ExistsPlanByProductId :one
+SELECT EXISTS(
+    SELECT 1
+    FROM "Plans"
+    WHERE "StripeProduct_id" = $1
+) AS "exists"
+`
+
+func (q *Queries) ExistsPlanByProductId(ctx context.Context, stripeproductID string) (bool, error) {
+	row := q.db.QueryRow(ctx, existsPlanByProductId, stripeproductID)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
@@ -1244,6 +1356,148 @@ func (q *Queries) GetPasswordResetTokenByHash(ctx context.Context, tokenhash str
 	return i, err
 }
 
+const getPlanById = `-- name: GetPlanById :one
+SELECT "Id", "Name", "Description", "Price", "StripePrice_id", "Active", "CreatedAt", "UpdatedAt"
+FROM "Plans"
+WHERE "Id" = $1
+`
+
+type GetPlanByIdRow struct {
+	Id            pgtype.UUID      `db:"Id" json:"Id"`
+	Name          string           `db:"Name" json:"Name"`
+	Description   pgtype.Text      `db:"Description" json:"Description"`
+	Price         int32            `db:"Price" json:"Price"`
+	StripePriceID pgtype.Text      `db:"StripePrice_id" json:"StripePrice_id"`
+	Active        bool             `db:"Active" json:"Active"`
+	CreatedAt     pgtype.Timestamp `db:"CreatedAt" json:"CreatedAt"`
+	UpdatedAt     pgtype.Timestamp `db:"UpdatedAt" json:"UpdatedAt"`
+}
+
+func (q *Queries) GetPlanById(ctx context.Context, id pgtype.UUID) (GetPlanByIdRow, error) {
+	row := q.db.QueryRow(ctx, getPlanById, id)
+	var i GetPlanByIdRow
+	err := row.Scan(
+		&i.Id,
+		&i.Name,
+		&i.Description,
+		&i.Price,
+		&i.StripePriceID,
+		&i.Active,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getPlanByPriceId = `-- name: GetPlanByPriceId :one
+SELECT "Id", "Name", "Description", "Price", "StripePrice_id", "StripeProduct_id", "Active", "CreatedAt", "UpdatedAt"
+FROM "Plans"
+WHERE "StripePrice_id" = $1
+`
+
+type GetPlanByPriceIdRow struct {
+	Id              pgtype.UUID      `db:"Id" json:"Id"`
+	Name            string           `db:"Name" json:"Name"`
+	Description     pgtype.Text      `db:"Description" json:"Description"`
+	Price           int32            `db:"Price" json:"Price"`
+	StripePriceID   pgtype.Text      `db:"StripePrice_id" json:"StripePrice_id"`
+	StripeProductID string           `db:"StripeProduct_id" json:"StripeProduct_id"`
+	Active          bool             `db:"Active" json:"Active"`
+	CreatedAt       pgtype.Timestamp `db:"CreatedAt" json:"CreatedAt"`
+	UpdatedAt       pgtype.Timestamp `db:"UpdatedAt" json:"UpdatedAt"`
+}
+
+func (q *Queries) GetPlanByPriceId(ctx context.Context, stripepriceID pgtype.Text) (GetPlanByPriceIdRow, error) {
+	row := q.db.QueryRow(ctx, getPlanByPriceId, stripepriceID)
+	var i GetPlanByPriceIdRow
+	err := row.Scan(
+		&i.Id,
+		&i.Name,
+		&i.Description,
+		&i.Price,
+		&i.StripePriceID,
+		&i.StripeProductID,
+		&i.Active,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getPlanByStripeProductID = `-- name: GetPlanByStripeProductID :one
+SELECT "Id", "Name", "Description", "Price", "StripePrice_id", "StripeProduct_id", "Active", "CreatedAt", "UpdatedAt"
+FROM "Plans"
+WHERE "StripeProduct_id" = $1
+`
+
+type GetPlanByStripeProductIDRow struct {
+	Id              pgtype.UUID      `db:"Id" json:"Id"`
+	Name            string           `db:"Name" json:"Name"`
+	Description     pgtype.Text      `db:"Description" json:"Description"`
+	Price           int32            `db:"Price" json:"Price"`
+	StripePriceID   pgtype.Text      `db:"StripePrice_id" json:"StripePrice_id"`
+	StripeProductID string           `db:"StripeProduct_id" json:"StripeProduct_id"`
+	Active          bool             `db:"Active" json:"Active"`
+	CreatedAt       pgtype.Timestamp `db:"CreatedAt" json:"CreatedAt"`
+	UpdatedAt       pgtype.Timestamp `db:"UpdatedAt" json:"UpdatedAt"`
+}
+
+func (q *Queries) GetPlanByStripeProductID(ctx context.Context, stripeproductID string) (GetPlanByStripeProductIDRow, error) {
+	row := q.db.QueryRow(ctx, getPlanByStripeProductID, stripeproductID)
+	var i GetPlanByStripeProductIDRow
+	err := row.Scan(
+		&i.Id,
+		&i.Name,
+		&i.Description,
+		&i.Price,
+		&i.StripePriceID,
+		&i.StripeProductID,
+		&i.Active,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getPlans = `-- name: GetPlans :many
+SELECT "Id", "Name", "Description", "Price"
+FROM "Plans"
+WHERE "Active" = true
+ORDER BY "Price" ASC
+`
+
+type GetPlansRow struct {
+	Id          pgtype.UUID `db:"Id" json:"Id"`
+	Name        string      `db:"Name" json:"Name"`
+	Description pgtype.Text `db:"Description" json:"Description"`
+	Price       int32       `db:"Price" json:"Price"`
+}
+
+func (q *Queries) GetPlans(ctx context.Context) ([]GetPlansRow, error) {
+	rows, err := q.db.Query(ctx, getPlans)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetPlansRow
+	for rows.Next() {
+		var i GetPlansRow
+		if err := rows.Scan(
+			&i.Id,
+			&i.Name,
+			&i.Description,
+			&i.Price,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getPlatformDistribution = `-- name: GetPlatformDistribution :many
 SELECT j."Platform" AS platform, COUNT(*)::int AS count
 FROM "Jobs" j
@@ -1365,6 +1619,20 @@ func (q *Queries) GetRoleByName(ctx context.Context, name string) (Role, error) 
 		&i.LastModifiedAt,
 	)
 	return i, err
+}
+
+const getRoleByPlan = `-- name: GetRoleByPlan :one
+SELECT r."Id"
+FROM "Plans" p
+JOIN "Roles" r ON r."Id" = p."RoleId"
+WHERE p."StripePrice_id" = $1
+`
+
+func (q *Queries) GetRoleByPlan(ctx context.Context, stripepriceID pgtype.Text) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, getRoleByPlan, stripepriceID)
+	var Id pgtype.UUID
+	err := row.Scan(&Id)
+	return Id, err
 }
 
 const getRoles = `-- name: GetRoles :many
@@ -1590,12 +1858,68 @@ func (q *Queries) GetSearchQueryScrapperLogs(ctx context.Context, searchqueryid 
 	return items, nil
 }
 
+const getSubscriptionById = `-- name: GetSubscriptionById :one
+SELECT "Id", "UserId", "PlanId", "StripeCustomer_id", "StripeSubscription_id", "StripeCheckoutSession_id", "StripePrice_id", "Status", "CurrentPeriodStart", "CurrentPeriodEnd", "CancelAtPeriodEnd", "CanceledAt", "CreatedAt", "UpdatedAt"
+FROM "Subscriptions"
+WHERE "Id" = $1
+`
+
+func (q *Queries) GetSubscriptionById(ctx context.Context, id pgtype.UUID) (Subscription, error) {
+	row := q.db.QueryRow(ctx, getSubscriptionById, id)
+	var i Subscription
+	err := row.Scan(
+		&i.Id,
+		&i.UserId,
+		&i.PlanId,
+		&i.StripeCustomerID,
+		&i.StripeSubscriptionID,
+		&i.StripeCheckoutSessionID,
+		&i.StripePriceID,
+		&i.Status,
+		&i.CurrentPeriodStart,
+		&i.CurrentPeriodEnd,
+		&i.CancelAtPeriodEnd,
+		&i.CanceledAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getSubscriptionByUserId = `-- name: GetSubscriptionByUserId :one
+SELECT "Id", "UserId", "PlanId", "StripeCustomer_id", "StripeSubscription_id", "StripeCheckoutSession_id", "StripePrice_id", "Status", "CurrentPeriodStart", "CurrentPeriodEnd", "CancelAtPeriodEnd", "CanceledAt", "CreatedAt", "UpdatedAt"
+FROM "Subscriptions"
+WHERE "UserId" = $1
+`
+
+func (q *Queries) GetSubscriptionByUserId(ctx context.Context, userid pgtype.UUID) (Subscription, error) {
+	row := q.db.QueryRow(ctx, getSubscriptionByUserId, userid)
+	var i Subscription
+	err := row.Scan(
+		&i.Id,
+		&i.UserId,
+		&i.PlanId,
+		&i.StripeCustomerID,
+		&i.StripeSubscriptionID,
+		&i.StripeCheckoutSessionID,
+		&i.StripePriceID,
+		&i.Status,
+		&i.CurrentPeriodStart,
+		&i.CurrentPeriodEnd,
+		&i.CancelAtPeriodEnd,
+		&i.CanceledAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getUserByEmail = `-- name: GetUserByEmail :one
 SELECT u."Id", u."Name", "CPF", "Email", "PasswordHash", "AccessFailedCount", "OnboardingCompleted", "LockoutEnd", "LockoutEnabled", "TwoFactorEnabled", "EmailConfirmed", "PhoneNumberConfirmed", COALESCE(r."Name", 'Standard') AS "RoleName"
 FROM public."AspNetUsers" as u
 LEFT JOIN "UserRoles" ur ON ur."UserId" = u."Id"
 LEFT JOIN "Roles" r ON r."Id" = ur."RoleId"
-WHERE u."Email" = $1
+WHERE u."Email" ILIKE $1
 `
 
 type GetUserByEmailRow struct {
@@ -1889,6 +2213,35 @@ func (q *Queries) SaveUserCv(ctx context.Context, arg SaveUserCvParams) error {
 	return err
 }
 
+const updatePlan = `-- name: UpdatePlan :exec
+UPDATE "Plans"
+SET "Name" = $2, "Description" = $3, "Price" = $4, "StripePrice_id" = $5, "UpdatedAt" = $6, "Active" = $7
+WHERE "StripeProduct_id" = $1
+`
+
+type UpdatePlanParams struct {
+	StripeProductID string           `db:"StripeProduct_id" json:"StripeProduct_id"`
+	Name            string           `db:"Name" json:"Name"`
+	Description     pgtype.Text      `db:"Description" json:"Description"`
+	Price           int32            `db:"Price" json:"Price"`
+	StripePriceID   pgtype.Text      `db:"StripePrice_id" json:"StripePrice_id"`
+	UpdatedAt       pgtype.Timestamp `db:"UpdatedAt" json:"UpdatedAt"`
+	Active          bool             `db:"Active" json:"Active"`
+}
+
+func (q *Queries) UpdatePlan(ctx context.Context, arg UpdatePlanParams) error {
+	_, err := q.db.Exec(ctx, updatePlan,
+		arg.StripeProductID,
+		arg.Name,
+		arg.Description,
+		arg.Price,
+		arg.StripePriceID,
+		arg.UpdatedAt,
+		arg.Active,
+	)
+	return err
+}
+
 const updateQuestionAnswer = `-- name: UpdateQuestionAnswer :exec
 UPDATE "Questions" SET "Answer" = $2 WHERE "Id" = $1
 `
@@ -1955,6 +2308,47 @@ func (q *Queries) UpdateSearchQuery(ctx context.Context, arg UpdateSearchQueryPa
 		arg.LastModifiedBy,
 		arg.LastModifiedAt,
 		arg.UserId,
+	)
+	return err
+}
+
+const updateSubscription = `-- name: UpdateSubscription :exec
+UPDATE "Subscriptions"
+SET "UserId" = $2, "PlanId" = $3, "StripeCustomer_id" = $4, "StripeSubscription_id" = $5, "StripeCheckoutSession_id" = $6, "StripePrice_id" = $7, "Status" = $8, "CurrentPeriodStart" = $9, "CurrentPeriodEnd" = $10, "CancelAtPeriodEnd" = $11, "CanceledAt" = $12, "UpdatedAt" = $13
+WHERE "Id" = $1
+`
+
+type UpdateSubscriptionParams struct {
+	Id                      pgtype.UUID      `db:"Id" json:"Id"`
+	UserId                  pgtype.UUID      `db:"UserId" json:"UserId"`
+	PlanId                  pgtype.UUID      `db:"PlanId" json:"PlanId"`
+	StripeCustomerID        string           `db:"StripeCustomer_id" json:"StripeCustomer_id"`
+	StripeSubscriptionID    string           `db:"StripeSubscription_id" json:"StripeSubscription_id"`
+	StripeCheckoutSessionID pgtype.Text      `db:"StripeCheckoutSession_id" json:"StripeCheckoutSession_id"`
+	StripePriceID           string           `db:"StripePrice_id" json:"StripePrice_id"`
+	Status                  string           `db:"Status" json:"Status"`
+	CurrentPeriodStart      pgtype.Timestamp `db:"CurrentPeriodStart" json:"CurrentPeriodStart"`
+	CurrentPeriodEnd        pgtype.Timestamp `db:"CurrentPeriodEnd" json:"CurrentPeriodEnd"`
+	CancelAtPeriodEnd       bool             `db:"CancelAtPeriodEnd" json:"CancelAtPeriodEnd"`
+	CanceledAt              pgtype.Timestamp `db:"CanceledAt" json:"CanceledAt"`
+	UpdatedAt               pgtype.Timestamp `db:"UpdatedAt" json:"UpdatedAt"`
+}
+
+func (q *Queries) UpdateSubscription(ctx context.Context, arg UpdateSubscriptionParams) error {
+	_, err := q.db.Exec(ctx, updateSubscription,
+		arg.Id,
+		arg.UserId,
+		arg.PlanId,
+		arg.StripeCustomerID,
+		arg.StripeSubscriptionID,
+		arg.StripeCheckoutSessionID,
+		arg.StripePriceID,
+		arg.Status,
+		arg.CurrentPeriodStart,
+		arg.CurrentPeriodEnd,
+		arg.CancelAtPeriodEnd,
+		arg.CanceledAt,
+		arg.UpdatedAt,
 	)
 	return err
 }

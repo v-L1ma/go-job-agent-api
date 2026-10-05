@@ -258,4 +258,36 @@ create table public."UserRoles" (
   constraint fk_userroles_roles_roleid foreign key ("RoleId") references "Roles" ("Id") on delete cascade
 ) TABLESPACE pg_default;
 
+CREATE TABLE public."Subscriptions" (
+  "Id" UUID PRIMARY KEY default gen_random_uuid (),
+  "UserId" UUID NOT NULL,
+  "PlanId" UUID NOT NULL,
+  "StripeCustomer_id" VARCHAR(255) NOT NULL,
+  "StripeSubscription_id" VARCHAR(255) NOT NULL UNIQUE,
+  "StripeCheckoutSession_id" VARCHAR(255),
+  "StripePrice_id" VARCHAR(255) NOT NULL,
+  "Status" VARCHAR(50) NOT NULL,
+  "CurrentPeriodStart" TIMESTAMP,
+  "CurrentPeriodEnd" TIMESTAMP,
+  "CancelAtPeriodEnd" BOOLEAN NOT NULL DEFAULT FALSE,
+  "CanceledAt" TIMESTAMP,
+  "CreatedAt" TIMESTAMP NOT NULL DEFAULT NOW(),
+  "UpdatedAt" TIMESTAMP NOT NULL DEFAULT NOW(),
+  CONSTRAINT fk_subscriptions_users FOREIGN KEY ("UserId") REFERENCES "AspNetUsers" ("Id") ON DELETE CASCADE,
+  CONSTRAINT fk_subscriptions_plans FOREIGN KEY ("PlanId") REFERENCES "Plans" ("Id") ON DELETE RESTRICT
+);
+
+CREATE TABLE public."Plans" (
+  "Id" UUID PRIMARY KEY default gen_random_uuid (),
+  "Name" VARCHAR(255) NOT NULL,
+  "StripePrice_id" VARCHAR(255) NULL UNIQUE,
+  "StripeProduct_id" VARCHAR(255) NOT NULL UNIQUE,
+  "Description" TEXT,
+  "Price" integer NOT NULL,
+  "RoleId" UUID NOT NULL,
+  "Active" BOOLEAN NOT NULL DEFAULT TRUE,
+  "CreatedAt" TIMESTAMP NOT NULL DEFAULT NOW(),
+  "UpdatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
+) TABLESPACE pg_default;
+
 CREATE EXTENSION IF NOT EXISTS unaccent;

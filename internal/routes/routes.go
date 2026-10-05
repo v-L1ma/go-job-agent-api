@@ -68,6 +68,18 @@ func RegisterRoutes(e *echo.Echo, db *database.Database) {
 		return handlers.SyncJobsEmbeddings(c, db)
 	})
 
+	api.POST("/checkout/session/:planId", func(c *echo.Context) error {
+		return handlers.CreatePaymentSession(c, db)
+	})
+
+	api.POST("/webhook/stripe", func(c *echo.Context) error {
+		return handlers.StripeWebhook(c, db)
+	})
+
+	api.GET("/plans", func(c *echo.Context) error {
+		return handlers.GetPlans(c, db)
+	})
+
 	private := api.Group("")
 	private.Use(middlewares.JWTMiddleware)
 
@@ -185,4 +197,13 @@ func RegisterRoutes(e *echo.Echo, db *database.Database) {
 	admin.DELETE("/roles/:id", func(c *echo.Context) error {
 		return handlers.DeleteRole(c, db)
 	})
-}
+
+	admin.GET("/plans", func(c *echo.Context) error {
+		return handlers.GetPlans(c, db)
+	})
+
+	admin.GET("/subscriptions", func(c *echo.Context) error {
+		return handlers.GetSubscriptions(c, db)
+	})
+
+}	

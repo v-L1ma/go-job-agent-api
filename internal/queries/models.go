@@ -129,6 +129,19 @@ type PasswordResetToken struct {
 	CreatedAt pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
 }
 
+type Plan struct {
+	Id              pgtype.UUID      `db:"Id" json:"Id"`
+	Name            string           `db:"Name" json:"Name"`
+	StripePriceID   pgtype.Text      `db:"StripePrice_id" json:"StripePrice_id"`
+	StripeProductID string           `db:"StripeProduct_id" json:"StripeProduct_id"`
+	Description     pgtype.Text      `db:"Description" json:"Description"`
+	Price           int32            `db:"Price" json:"Price"`
+	RoleId          pgtype.UUID      `db:"RoleId" json:"RoleId"`
+	Active          bool             `db:"Active" json:"Active"`
+	CreatedAt       pgtype.Timestamp `db:"CreatedAt" json:"CreatedAt"`
+	UpdatedAt       pgtype.Timestamp `db:"UpdatedAt" json:"UpdatedAt"`
+}
+
 type Preference struct {
 	Id                pgtype.UUID        `db:"Id" json:"Id"`
 	UserId            pgtype.UUID        `db:"UserId" json:"UserId"`
@@ -191,6 +204,23 @@ type SearchQuery struct {
 	LastExecutedAt       pgtype.Timestamptz `db:"LastExecutedAt" json:"LastExecutedAt"`
 	Levels               []string           `db:"Levels" json:"Levels"`
 	SearchQueryEmbedding interface{}        `db:"SearchQueryEmbedding" json:"SearchQueryEmbedding"`
+}
+
+type Subscription struct {
+	Id                      pgtype.UUID      `db:"Id" json:"Id"`
+	UserId                  pgtype.UUID      `db:"UserId" json:"UserId"`
+	PlanId                  pgtype.UUID      `db:"PlanId" json:"PlanId"`
+	StripeCustomerID        string           `db:"StripeCustomer_id" json:"StripeCustomer_id"`
+	StripeSubscriptionID    string           `db:"StripeSubscription_id" json:"StripeSubscription_id"`
+	StripeCheckoutSessionID pgtype.Text      `db:"StripeCheckoutSession_id" json:"StripeCheckoutSession_id"`
+	StripePriceID           string           `db:"StripePrice_id" json:"StripePrice_id"`
+	Status                  string           `db:"Status" json:"Status"`
+	CurrentPeriodStart      pgtype.Timestamp `db:"CurrentPeriodStart" json:"CurrentPeriodStart"`
+	CurrentPeriodEnd        pgtype.Timestamp `db:"CurrentPeriodEnd" json:"CurrentPeriodEnd"`
+	CancelAtPeriodEnd       bool             `db:"CancelAtPeriodEnd" json:"CancelAtPeriodEnd"`
+	CanceledAt              pgtype.Timestamp `db:"CanceledAt" json:"CanceledAt"`
+	CreatedAt               pgtype.Timestamp `db:"CreatedAt" json:"CreatedAt"`
+	UpdatedAt               pgtype.Timestamp `db:"UpdatedAt" json:"UpdatedAt"`
 }
 
 type UserCv struct {

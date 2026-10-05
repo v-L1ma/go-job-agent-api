@@ -298,7 +298,7 @@ SELECT u."Id", u."Name", "CPF", "Email", "PasswordHash", "AccessFailedCount", "O
 FROM public."AspNetUsers" as u
 LEFT JOIN "UserRoles" ur ON ur."UserId" = u."Id"
 LEFT JOIN "Roles" r ON r."Id" = ur."RoleId"
-WHERE u."Email" = $1;
+WHERE u."Email" ILIKE $1;
 
 -- name: ExistsUserById :one
 SELECT EXISTS (
@@ -660,3 +660,75 @@ SELECT EXISTS(
     FROM "UserCvs" 
     WHERE "UserId" = $1
 ) AS "exists";
+
+-- name: CreateSubscription :exec
+INSERT INTO "Subscriptions" ("Id", "UserId", "PlanId", "StripeCustomer_id", "StripeSubscription_id", "StripeCheckoutSession_id", "StripePrice_id", "Status", "CurrentPeriodStart", "CurrentPeriodEnd", "CancelAtPeriodEnd", "CanceledAt", "CreatedAt", "UpdatedAt")
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14);
+
+-- name: UpdateSubscription :exec
+UPDATE "Subscriptions"
+SET "UserId" = $2, "PlanId" = $3, "StripeCustomer_id" = $4, "StripeSubscription_id" = $5, "StripeCheckoutSession_id" = $6, "StripePrice_id" = $7, "Status" = $8, "CurrentPeriodStart" = $9, "CurrentPeriodEnd" = $10, "CancelAtPeriodEnd" = $11, "CanceledAt" = $12, "UpdatedAt" = $13
+WHERE "Id" = $1;
+
+-- name: DeactivateSubscription :exec
+UPDATE "Subscriptions"
+SET "Active" = false
+WHERE "Id" = $1;
+
+-- name: GetSubscriptionByUserId :one
+SELECT "Id", "UserId", "PlanId", "StripeCustomer_id", "StripeSubscription_id", "StripeCheckoutSession_id", "StripePrice_id", "Status", "CurrentPeriodStart", "CurrentPeriodEnd", "CancelAtPeriodEnd", "CanceledAt", "CreatedAt", "UpdatedAt"
+FROM "Subscriptions"
+WHERE "UserId" = $1;
+
+-- name: GetSubscriptionById :one
+SELECT "Id", "UserId", "PlanId", "StripeCustomer_id", "StripeSubscription_id", "StripeCheckoutSession_id", "StripePrice_id", "Status", "CurrentPeriodStart", "CurrentPeriodEnd", "CancelAtPeriodEnd", "CanceledAt", "CreatedAt", "UpdatedAt"
+FROM "Subscriptions"
+WHERE "Id" = $1;
+
+-- name: CreatePlan :exec
+INSERT INTO "Plans" ("Name", "Description", "Price", "StripePrice_id", "StripeProduct_id", "RoleId", "Active")
+VALUES ($1, $2, $3, $4, $5, $6, $7);
+
+-- name: UpdatePlan :exec
+UPDATE "Plans"
+SET "Name" = $2, "Description" = $3, "Price" = $4, "StripePrice_id" = $5, "UpdatedAt" = $6, "Active" = $7
+WHERE "StripeProduct_id" = $1;
+
+-- name: DeactivatePlan :exec
+UPDATE "Plans"
+SET "Active" = false, "UpdatedAt" = $2
+WHERE "StripeProduct_id" = $1;
+
+-- name: GetPlanByPriceId :one
+SELECT "Id", "Name", "Description", "Price", "StripePrice_id", "StripeProduct_id", "Active", "CreatedAt", "UpdatedAt"
+FROM "Plans"
+WHERE "StripePrice_id" = $1;
+
+-- name: GetPlanByStripeProductID :one
+SELECT "Id", "Name", "Description", "Price", "StripePrice_id", "StripeProduct_id", "Active", "CreatedAt", "UpdatedAt"
+FROM "Plans"
+WHERE "StripeProduct_id" = $1;
+
+-- name: GetPlanById :one
+SELECT "Id", "Name", "Description", "Price", "StripePrice_id", "Active", "CreatedAt", "UpdatedAt"
+FROM "Plans"
+WHERE "Id" = $1;
+
+-- name: GetPlans :many
+SELECT "Id", "Name", "Description", "Price"
+FROM "Plans"
+WHERE "Active" = true
+ORDER BY "Price" ASC;
+
+-- name: ExistsPlanByProductId :one
+SELECT EXISTS(
+    SELECT 1
+    FROM "Plans"
+    WHERE "StripeProduct_id" = $1
+) AS "exists";
+
+-- name: GetRoleByPlan :one
+SELECT r."Id"
+FROM "Plans" p
+JOIN "Roles" r ON r."Id" = p."RoleId"
+WHERE p."StripePrice_id" = $1;
