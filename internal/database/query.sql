@@ -652,7 +652,12 @@ WHERE "Id" = $1;
 
 -- name: AssignRoleToUser :exec
 INSERT INTO "UserRoles" ("UserId", "RoleId")
-VALUES ($1, $2);
+VALUES ($1, $2)
+ON CONFLICT ("UserId", "RoleId") DO NOTHING;
+
+-- name: RemoveRoleFromUser :exec
+DELETE FROM "UserRoles"
+WHERE "UserId" = $1 AND "RoleId" = $2;
 
 -- name: ExistsUploadedCv :one
 SELECT EXISTS(
@@ -670,19 +675,111 @@ UPDATE "Subscriptions"
 SET "UserId" = $2, "PlanId" = $3, "StripeCustomer_id" = $4, "StripeSubscription_id" = $5, "StripeCheckoutSession_id" = $6, "StripePrice_id" = $7, "Status" = $8, "CurrentPeriodStart" = $9, "CurrentPeriodEnd" = $10, "CancelAtPeriodEnd" = $11, "CanceledAt" = $12, "UpdatedAt" = $13
 WHERE "Id" = $1;
 
--- name: DeactivateSubscription :exec
+-- name: UpsertSubscription :one
+INSERT INTO "Subscriptions" (
+  "UserId", "PlanId", "StripeCustomer_id", "StripeSubscription_id",
+  "StripeCheckoutSession_id", "StripePrice_id", "Status",
+  "CurrentPeriodStart", "CurrentPeriodEnd", "CancelAtPeriodEnd",
+  "CanceledAt", "CreatedAt", "UpdatedAt"
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), $12)
+ON CONFLICT ("StripeSubscription_id") DO UPDATE SET
+  "UserId" = EXCLUDED."UserId",
+  "PlanId" = EXCLUDED."PlanId",
+  "StripeCustomer_id" = EXCLUDED."StripeCustomer_id",
+  "StripeCheckoutSession_id" = COALESCE(EXCLUDED."StripeCheckoutSession_id", "Subscriptions"."StripeCheckoutSession_id"),
+  "StripePrice_id" = COALESCE(EXCLUDED."StripePrice_id", "Subscriptions"."StripePrice_id"),
+  "Status" = EXCLUDED."Status",
+  "CurrentPeriodStart" = COALESCE(EXCLUDED."CurrentPeriodStart", "Subscriptions"."CurrentPeriodStart"),
+  "CurrentPeriodEnd" = COALESCE(EXCLUDED."CurrentPeriodEnd", "Subscriptions"."CurrentPeriodEnd"),
+  "CancelAtPeriodEnd" = EXCLUDED."CancelAtPeriodEnd",
+  "CanceledAt" = COALESCE(EXCLUDED."CanceledAt", "Subscriptions"."CanceledAt"),
+  "UpdatedAt" = EXCLUDED."UpdatedAt"
+RETURNING "Id";
+
+-- name: SetSubscriptionCheckoutSession :execrows
 UPDATE "Subscriptions"
-SET "Active" = false
-WHERE "Id" = $1;
+SET "StripeCheckoutSession_id" = $2,
+    "StripeCustomer_id" = CASE WHEN sqlc.narg(customer_id)::text IS NOT NULL THEN sqlc.narg(customer_id)::text ELSE "StripeCustomer_id" END,
+    "UpdatedAt" = NOW()
+WHERE "StripeSubscription_id" = $1;
+
+-- name: InsertSubscriptionFromCheckout :execrows
+INSERT INTO "Subscriptions" (
+  "UserId", "PlanId", "StripeCustomer_id", "StripeSubscription_id",
+  "StripeCheckoutSession_id", "Status", "CancelAtPeriodEnd", "CreatedAt", "UpdatedAt"
+)
+VALUES ($1, $2, $3, $4, $5, 'incomplete', FALSE, NOW(), NOW())
+ON CONFLICT ("StripeSubscription_id") DO NOTHING;
 
 -- name: GetSubscriptionByUserId :one
 SELECT "Id", "UserId", "PlanId", "StripeCustomer_id", "StripeSubscription_id", "StripeCheckoutSession_id", "StripePrice_id", "Status", "CurrentPeriodStart", "CurrentPeriodEnd", "CancelAtPeriodEnd", "CanceledAt", "CreatedAt", "UpdatedAt"
 FROM "Subscriptions"
-WHERE "UserId" = $1;
+WHERE "UserId" = $1
+ORDER BY "CreatedAt" DESC, "UpdatedAt" DESC
+LIMIT 1;
 
 -- name: GetSubscriptionById :one
+SELECT s."Id", s."UserId", u."Email" AS "UserEmail", s."PlanId", s."StripeCustomer_id", s."StripeSubscription_id", s."StripeCheckoutSession_id", s."StripePrice_id", s."Status", s."CurrentPeriodStart", s."CurrentPeriodEnd", s."CancelAtPeriodEnd", s."CanceledAt", s."CreatedAt", s."UpdatedAt", p."Name" AS "PlanName", r."Name" AS "PlanRoleName"
+FROM "Subscriptions" s
+LEFT JOIN "Plans" p ON p."Id" = s."PlanId"
+LEFT JOIN "Roles" r ON r."Id" = p."RoleId"
+LEFT JOIN "AspNetUsers" u ON u."Id" = s."UserId"
+WHERE s."Id" = $1;
+
+-- name: GetSubscriptionByStripeSubscriptionId :one
 SELECT "Id", "UserId", "PlanId", "StripeCustomer_id", "StripeSubscription_id", "StripeCheckoutSession_id", "StripePrice_id", "Status", "CurrentPeriodStart", "CurrentPeriodEnd", "CancelAtPeriodEnd", "CanceledAt", "CreatedAt", "UpdatedAt"
 FROM "Subscriptions"
+WHERE "StripeSubscription_id" = $1;
+
+-- name: UpsertStripeCustomer :exec
+INSERT INTO "StripeCustomers" ("UserId", "StripeCustomerId", "CreatedAt", "UpdatedAt")
+VALUES ($1, $2, NOW(), NOW())
+ON CONFLICT ("UserId") DO UPDATE SET
+  "StripeCustomerId" = EXCLUDED."StripeCustomerId",
+  "UpdatedAt" = NOW();
+
+-- name: GetStripeCustomerByUserId :one
+SELECT "UserId", "StripeCustomerId", "CreatedAt", "UpdatedAt"
+FROM "StripeCustomers"
+WHERE "UserId" = $1;
+
+-- name: GetUserIdByStripeCustomerId :one
+SELECT "UserId"
+FROM "StripeCustomers"
+WHERE "StripeCustomerId" = $1;
+
+-- name: TryInsertWebhookEvent :one
+INSERT INTO "StripeWebhookEvents" ("Id", "Type", "ProcessedAt")
+VALUES ($1, $2, NOW())
+ON CONFLICT ("Id") DO NOTHING
+RETURNING "Id";
+
+-- name: UpsertStripeInvoice :exec
+INSERT INTO "StripeInvoices" (
+  "StripeInvoiceId", "StripeSubscriptionId", "StripeCustomerId",
+  "AmountPaid", "Currency", "Status", "PaidAt", "CreatedAt", "UpdatedAt"
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+ON CONFLICT ("StripeInvoiceId") DO UPDATE SET
+  "StripeSubscriptionId" = COALESCE(EXCLUDED."StripeSubscriptionId", "StripeInvoices"."StripeSubscriptionId"),
+  "StripeCustomerId" = COALESCE(EXCLUDED."StripeCustomerId", "StripeInvoices"."StripeCustomerId"),
+  "AmountPaid" = COALESCE(EXCLUDED."AmountPaid", "StripeInvoices"."AmountPaid"),
+  "Currency" = COALESCE(EXCLUDED."Currency", "StripeInvoices"."Currency"),
+  "Status" = EXCLUDED."Status",
+  "PaidAt" = COALESCE(EXCLUDED."PaidAt", "StripeInvoices"."PaidAt"),
+  "UpdatedAt" = NOW();
+
+-- name: GetInvoicesByStripeSubscriptionId :many
+SELECT "StripeInvoiceId", "AmountPaid", "Currency", "Status", "PaidAt", "CreatedAt"
+FROM "StripeInvoices"
+WHERE "StripeSubscriptionId" = $1
+ORDER BY "CreatedAt" DESC
+LIMIT 20;
+
+-- name: GetPlanRoleId :one
+SELECT "RoleId"
+FROM "Plans"
 WHERE "Id" = $1;
 
 -- name: CreatePlan :exec
@@ -710,7 +807,7 @@ FROM "Plans"
 WHERE "StripeProduct_id" = $1;
 
 -- name: GetPlanById :one
-SELECT "Id", "Name", "Description", "Price", "StripePrice_id", "Active", "CreatedAt", "UpdatedAt"
+SELECT "Id", "Name", "Description", "Price", "StripePrice_id", "RoleId", "Active", "CreatedAt", "UpdatedAt"
 FROM "Plans"
 WHERE "Id" = $1;
 
@@ -732,3 +829,25 @@ SELECT r."Id"
 FROM "Plans" p
 JOIN "Roles" r ON r."Id" = p."RoleId"
 WHERE p."StripePrice_id" = $1;
+
+-- name: GetAllPlans :many
+SELECT "Id", "Name", "Description", "Price", "StripePrice_id", "StripeProduct_id", "RoleId", "Active", "CreatedAt", "UpdatedAt"
+FROM "Plans"
+ORDER BY "CreatedAt" DESC;
+
+-- name: GetSubscriptions :many
+SELECT s."Id", u."Email" AS "UserEmail", s."PlanId", s."StripeCustomer_id", s."StripeSubscription_id", s."StripeCheckoutSession_id", s."StripePrice_id", s."Status", s."CurrentPeriodStart", s."CurrentPeriodEnd", s."CancelAtPeriodEnd", s."CanceledAt", s."CreatedAt", s."UpdatedAt", p."Name" AS "PlanName", r."Name" AS "PlanRoleName"
+FROM "Subscriptions" s
+LEFT JOIN "Plans" p ON p."Id" = s."PlanId"
+LEFT JOIN "AspNetUsers" u ON u."Id" = s."UserId"
+LEFT JOIN "Roles" r ON r."Id" = p."RoleId"
+ORDER BY s."CreatedAt" DESC;
+
+-- name: GetSubscriptionsByUserId :many
+SELECT s."Id", u."Email" AS "UserEmail", s."PlanId", s."StripeCustomer_id", s."StripeSubscription_id", s."StripeCheckoutSession_id", s."StripePrice_id", s."Status", s."CurrentPeriodStart", s."CurrentPeriodEnd", s."CancelAtPeriodEnd", s."CanceledAt", s."CreatedAt", s."UpdatedAt", p."Name" AS "PlanName", r."Name" AS "PlanRoleName"
+FROM "Subscriptions" s
+LEFT JOIN "Plans" p ON p."Id" = s."PlanId"
+LEFT JOIN "AspNetUsers" u ON u."Id" = s."UserId"
+LEFT JOIN "Roles" r ON r."Id" = p."RoleId"
+WHERE s."UserId" = $1
+ORDER BY s."CreatedAt" DESC;

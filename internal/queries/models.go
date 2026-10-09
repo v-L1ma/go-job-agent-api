@@ -206,6 +206,31 @@ type SearchQuery struct {
 	SearchQueryEmbedding interface{}        `db:"SearchQueryEmbedding" json:"SearchQueryEmbedding"`
 }
 
+type StripeCustomer struct {
+	UserId           pgtype.UUID        `db:"UserId" json:"UserId"`
+	StripeCustomerId string             `db:"StripeCustomerId" json:"StripeCustomerId"`
+	CreatedAt        pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+	UpdatedAt        pgtype.Timestamptz `db:"UpdatedAt" json:"UpdatedAt"`
+}
+
+type StripeInvoice struct {
+	StripeInvoiceId      string             `db:"StripeInvoiceId" json:"StripeInvoiceId"`
+	StripeSubscriptionId pgtype.Text        `db:"StripeSubscriptionId" json:"StripeSubscriptionId"`
+	StripeCustomerId     pgtype.Text        `db:"StripeCustomerId" json:"StripeCustomerId"`
+	AmountPaid           pgtype.Int8        `db:"AmountPaid" json:"AmountPaid"`
+	Currency             pgtype.Text        `db:"Currency" json:"Currency"`
+	Status               string             `db:"Status" json:"Status"`
+	PaidAt               pgtype.Timestamptz `db:"PaidAt" json:"PaidAt"`
+	CreatedAt            pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+	UpdatedAt            pgtype.Timestamptz `db:"UpdatedAt" json:"UpdatedAt"`
+}
+
+type StripeWebhookEvent struct {
+	Id          string             `db:"Id" json:"Id"`
+	Type        string             `db:"Type" json:"Type"`
+	ProcessedAt pgtype.Timestamptz `db:"ProcessedAt" json:"ProcessedAt"`
+}
+
 type Subscription struct {
 	Id                      pgtype.UUID      `db:"Id" json:"Id"`
 	UserId                  pgtype.UUID      `db:"UserId" json:"UserId"`
@@ -213,7 +238,7 @@ type Subscription struct {
 	StripeCustomerID        string           `db:"StripeCustomer_id" json:"StripeCustomer_id"`
 	StripeSubscriptionID    string           `db:"StripeSubscription_id" json:"StripeSubscription_id"`
 	StripeCheckoutSessionID pgtype.Text      `db:"StripeCheckoutSession_id" json:"StripeCheckoutSession_id"`
-	StripePriceID           string           `db:"StripePrice_id" json:"StripePrice_id"`
+	StripePriceID           pgtype.Text      `db:"StripePrice_id" json:"StripePrice_id"`
 	Status                  string           `db:"Status" json:"Status"`
 	CurrentPeriodStart      pgtype.Timestamp `db:"CurrentPeriodStart" json:"CurrentPeriodStart"`
 	CurrentPeriodEnd        pgtype.Timestamp `db:"CurrentPeriodEnd" json:"CurrentPeriodEnd"`

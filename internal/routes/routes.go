@@ -11,11 +11,11 @@ import (
 )
 
 type CustomValidator struct {
-    validator *validator.Validate
+	validator *validator.Validate
 }
 
 func (cv *CustomValidator) Validate(i interface{}) error {
-    return cv.validator.Struct(i)
+	return cv.validator.Struct(i)
 }
 
 func RegisterRoutes(e *echo.Echo, db *database.Database) {
@@ -25,7 +25,7 @@ func RegisterRoutes(e *echo.Echo, db *database.Database) {
 	// 	// 	Name: "Jacob",
 	// 	// 	Cpf:  "12345678901",
 	// 	// };
-		
+
 	// 	// db.Query.CreateAuthor(c.Request().Context(), new)
 	// 	authors, err := db.Query.ListAuthors(c.Request().Context())
 	// 	if err != nil {
@@ -68,10 +68,6 @@ func RegisterRoutes(e *echo.Echo, db *database.Database) {
 		return handlers.SyncJobsEmbeddings(c, db)
 	})
 
-	api.POST("/checkout/session/:planId", func(c *echo.Context) error {
-		return handlers.CreatePaymentSession(c, db)
-	})
-
 	api.POST("/webhook/stripe", func(c *echo.Context) error {
 		return handlers.StripeWebhook(c, db)
 	})
@@ -82,6 +78,14 @@ func RegisterRoutes(e *echo.Echo, db *database.Database) {
 
 	private := api.Group("")
 	private.Use(middlewares.JWTMiddleware)
+
+	private.POST("/checkout/session/:planId", func(c *echo.Context) error {
+		return handlers.CreatePaymentSession(c, db)
+	})
+
+	private.GET("/subscriptions/me", func(c *echo.Context) error {
+		return handlers.GetMySubscription(c, db)
+	})
 
 	private.GET("/jobs", func(c *echo.Context) error {
 		return handlers.GetJobs(c, db)
@@ -139,42 +143,42 @@ func RegisterRoutes(e *echo.Echo, db *database.Database) {
 		return handlers.GetUserStatistics(c, db)
 	})
 
-	private.GET("/questions", func (c *echo.Context) error {
+	private.GET("/questions", func(c *echo.Context) error {
 		return handlers.GetQuestions(c, db)
 	})
 
-	private.PUT("/questions/:questionId", func (c *echo.Context) error {
+	private.PUT("/questions/:questionId", func(c *echo.Context) error {
 		return handlers.EditQuestion(c, db)
 	})
 
-	private.POST("/questions", func (c *echo.Context) error{
+	private.POST("/questions", func(c *echo.Context) error {
 		return handlers.AnswerQuestion(c, db)
 	})
 
-	private.POST("/applications", func (c *echo.Context) error{
+	private.POST("/applications", func(c *echo.Context) error {
 		return handlers.ApplyToJob(c, db)
 	})
 
-	private.GET("/applications", func (c *echo.Context) error{
+	private.GET("/applications", func(c *echo.Context) error {
 		return handlers.GetApplications(c, db)
 	})
-	
-	private.POST("/applications/:applicationId/rate", func (c *echo.Context) error{
+
+	private.POST("/applications/:applicationId/rate", func(c *echo.Context) error {
 		return handlers.RateApplication(c, db)
 	})
 
 	admin := private.Group("/admin")
 	admin.Use(middlewares.AdminMiddleware)
 
-	admin.GET("/scrapper/logs/:searchQueryId", func (c *echo.Context) error{
+	admin.GET("/scrapper/logs/:searchQueryId", func(c *echo.Context) error {
 		return handlers.GetScrapperLogs(c, db)
 	})
 
-	admin.GET("/scrapper/jobs/:executionId", func (c *echo.Context) error{
+	admin.GET("/scrapper/jobs/:executionId", func(c *echo.Context) error {
 		return handlers.GetScrapperExecutionJobs(c, db)
 	})
 
-	admin.GET("/search-queries", func (c *echo.Context) error{
+	admin.GET("/search-queries", func(c *echo.Context) error {
 		return handlers.GetSearchQueries(c, db)
 	})
 
@@ -199,11 +203,19 @@ func RegisterRoutes(e *echo.Echo, db *database.Database) {
 	})
 
 	admin.GET("/plans", func(c *echo.Context) error {
-		return handlers.GetPlans(c, db)
+		return handlers.GetAdminPlans(c, db)
 	})
 
 	admin.GET("/subscriptions", func(c *echo.Context) error {
 		return handlers.GetSubscriptions(c, db)
 	})
 
-}	
+	admin.GET("/subscriptions/:subscriptionId", func(c *echo.Context) error {
+		return handlers.GetSubscriptionDetails(c, db)
+	})
+
+	admin.GET("/users/:userId/subscriptions", func(c *echo.Context) error {
+		return handlers.GetUserSubscriptions(c, db)
+	})
+
+}

@@ -31,6 +31,7 @@ func (q *Queries) AddEmbeddings(ctx context.Context, arg AddEmbeddingsParams) er
 const assignRoleToUser = `-- name: AssignRoleToUser :exec
 INSERT INTO "UserRoles" ("UserId", "RoleId")
 VALUES ($1, $2)
+ON CONFLICT ("UserId", "RoleId") DO NOTHING
 `
 
 type AssignRoleToUserParams struct {
@@ -263,7 +264,7 @@ type CreateSubscriptionParams struct {
 	StripeCustomerID        string           `db:"StripeCustomer_id" json:"StripeCustomer_id"`
 	StripeSubscriptionID    string           `db:"StripeSubscription_id" json:"StripeSubscription_id"`
 	StripeCheckoutSessionID pgtype.Text      `db:"StripeCheckoutSession_id" json:"StripeCheckoutSession_id"`
-	StripePriceID           string           `db:"StripePrice_id" json:"StripePrice_id"`
+	StripePriceID           pgtype.Text      `db:"StripePrice_id" json:"StripePrice_id"`
 	Status                  string           `db:"Status" json:"Status"`
 	CurrentPeriodStart      pgtype.Timestamp `db:"CurrentPeriodStart" json:"CurrentPeriodStart"`
 	CurrentPeriodEnd        pgtype.Timestamp `db:"CurrentPeriodEnd" json:"CurrentPeriodEnd"`
@@ -404,17 +405,6 @@ type DeactivateRoleParams struct {
 
 func (q *Queries) DeactivateRole(ctx context.Context, arg DeactivateRoleParams) error {
 	_, err := q.db.Exec(ctx, deactivateRole, arg.Id, arg.LastModifiedBy, arg.LastModifiedAt)
-	return err
-}
-
-const deactivateSubscription = `-- name: DeactivateSubscription :exec
-UPDATE "Subscriptions"
-SET "Active" = false
-WHERE "Id" = $1
-`
-
-func (q *Queries) DeactivateSubscription(ctx context.Context, id pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, deactivateSubscription, id)
 	return err
 }
 
@@ -703,6 +693,56 @@ func (q *Queries) FindUserPreferences(ctx context.Context, userid pgtype.UUID) (
 	return exists, err
 }
 
+const getAllPlans = `-- name: GetAllPlans :many
+SELECT "Id", "Name", "Description", "Price", "StripePrice_id", "StripeProduct_id", "RoleId", "Active", "CreatedAt", "UpdatedAt"
+FROM "Plans"
+ORDER BY "CreatedAt" DESC
+`
+
+type GetAllPlansRow struct {
+	Id              pgtype.UUID      `db:"Id" json:"Id"`
+	Name            string           `db:"Name" json:"Name"`
+	Description     pgtype.Text      `db:"Description" json:"Description"`
+	Price           int32            `db:"Price" json:"Price"`
+	StripePriceID   pgtype.Text      `db:"StripePrice_id" json:"StripePrice_id"`
+	StripeProductID string           `db:"StripeProduct_id" json:"StripeProduct_id"`
+	RoleId          pgtype.UUID      `db:"RoleId" json:"RoleId"`
+	Active          bool             `db:"Active" json:"Active"`
+	CreatedAt       pgtype.Timestamp `db:"CreatedAt" json:"CreatedAt"`
+	UpdatedAt       pgtype.Timestamp `db:"UpdatedAt" json:"UpdatedAt"`
+}
+
+func (q *Queries) GetAllPlans(ctx context.Context) ([]GetAllPlansRow, error) {
+	rows, err := q.db.Query(ctx, getAllPlans)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetAllPlansRow
+	for rows.Next() {
+		var i GetAllPlansRow
+		if err := rows.Scan(
+			&i.Id,
+			&i.Name,
+			&i.Description,
+			&i.Price,
+			&i.StripePriceID,
+			&i.StripeProductID,
+			&i.RoleId,
+			&i.Active,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getApplicationsPerDay = `-- name: GetApplicationsPerDay :many
 SELECT j."CreatedAt"::date AS date, COUNT(*)::int AS count
 FROM "Jobs" j
@@ -912,6 +952,50 @@ func (q *Queries) GetGeneratedCvs(ctx context.Context, userid pgtype.UUID) ([]Ge
 			&i.Title,
 			&i.FileName,
 			&i.ExtractedText,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getInvoicesByStripeSubscriptionId = `-- name: GetInvoicesByStripeSubscriptionId :many
+SELECT "StripeInvoiceId", "AmountPaid", "Currency", "Status", "PaidAt", "CreatedAt"
+FROM "StripeInvoices"
+WHERE "StripeSubscriptionId" = $1
+ORDER BY "CreatedAt" DESC
+LIMIT 20
+`
+
+type GetInvoicesByStripeSubscriptionIdRow struct {
+	StripeInvoiceId string             `db:"StripeInvoiceId" json:"StripeInvoiceId"`
+	AmountPaid      pgtype.Int8        `db:"AmountPaid" json:"AmountPaid"`
+	Currency        pgtype.Text        `db:"Currency" json:"Currency"`
+	Status          string             `db:"Status" json:"Status"`
+	PaidAt          pgtype.Timestamptz `db:"PaidAt" json:"PaidAt"`
+	CreatedAt       pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+}
+
+func (q *Queries) GetInvoicesByStripeSubscriptionId(ctx context.Context, stripesubscriptionid pgtype.Text) ([]GetInvoicesByStripeSubscriptionIdRow, error) {
+	rows, err := q.db.Query(ctx, getInvoicesByStripeSubscriptionId, stripesubscriptionid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetInvoicesByStripeSubscriptionIdRow
+	for rows.Next() {
+		var i GetInvoicesByStripeSubscriptionIdRow
+		if err := rows.Scan(
+			&i.StripeInvoiceId,
+			&i.AmountPaid,
+			&i.Currency,
+			&i.Status,
+			&i.PaidAt,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -1357,7 +1441,7 @@ func (q *Queries) GetPasswordResetTokenByHash(ctx context.Context, tokenhash str
 }
 
 const getPlanById = `-- name: GetPlanById :one
-SELECT "Id", "Name", "Description", "Price", "StripePrice_id", "Active", "CreatedAt", "UpdatedAt"
+SELECT "Id", "Name", "Description", "Price", "StripePrice_id", "RoleId", "Active", "CreatedAt", "UpdatedAt"
 FROM "Plans"
 WHERE "Id" = $1
 `
@@ -1368,6 +1452,7 @@ type GetPlanByIdRow struct {
 	Description   pgtype.Text      `db:"Description" json:"Description"`
 	Price         int32            `db:"Price" json:"Price"`
 	StripePriceID pgtype.Text      `db:"StripePrice_id" json:"StripePrice_id"`
+	RoleId        pgtype.UUID      `db:"RoleId" json:"RoleId"`
 	Active        bool             `db:"Active" json:"Active"`
 	CreatedAt     pgtype.Timestamp `db:"CreatedAt" json:"CreatedAt"`
 	UpdatedAt     pgtype.Timestamp `db:"UpdatedAt" json:"UpdatedAt"`
@@ -1382,6 +1467,7 @@ func (q *Queries) GetPlanById(ctx context.Context, id pgtype.UUID) (GetPlanByIdR
 		&i.Description,
 		&i.Price,
 		&i.StripePriceID,
+		&i.RoleId,
 		&i.Active,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -1457,6 +1543,19 @@ func (q *Queries) GetPlanByStripeProductID(ctx context.Context, stripeproductID 
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const getPlanRoleId = `-- name: GetPlanRoleId :one
+SELECT "RoleId"
+FROM "Plans"
+WHERE "Id" = $1
+`
+
+func (q *Queries) GetPlanRoleId(ctx context.Context, id pgtype.UUID) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, getPlanRoleId, id)
+	var RoleId pgtype.UUID
+	err := row.Scan(&RoleId)
+	return RoleId, err
 }
 
 const getPlans = `-- name: GetPlans :many
@@ -1858,14 +1957,86 @@ func (q *Queries) GetSearchQueryScrapperLogs(ctx context.Context, searchqueryid 
 	return items, nil
 }
 
-const getSubscriptionById = `-- name: GetSubscriptionById :one
-SELECT "Id", "UserId", "PlanId", "StripeCustomer_id", "StripeSubscription_id", "StripeCheckoutSession_id", "StripePrice_id", "Status", "CurrentPeriodStart", "CurrentPeriodEnd", "CancelAtPeriodEnd", "CanceledAt", "CreatedAt", "UpdatedAt"
-FROM "Subscriptions"
-WHERE "Id" = $1
+const getStripeCustomerByUserId = `-- name: GetStripeCustomerByUserId :one
+SELECT "UserId", "StripeCustomerId", "CreatedAt", "UpdatedAt"
+FROM "StripeCustomers"
+WHERE "UserId" = $1
 `
 
-func (q *Queries) GetSubscriptionById(ctx context.Context, id pgtype.UUID) (Subscription, error) {
+func (q *Queries) GetStripeCustomerByUserId(ctx context.Context, userid pgtype.UUID) (StripeCustomer, error) {
+	row := q.db.QueryRow(ctx, getStripeCustomerByUserId, userid)
+	var i StripeCustomer
+	err := row.Scan(
+		&i.UserId,
+		&i.StripeCustomerId,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getSubscriptionById = `-- name: GetSubscriptionById :one
+SELECT s."Id", s."UserId", u."Email" AS "UserEmail", s."PlanId", s."StripeCustomer_id", s."StripeSubscription_id", s."StripeCheckoutSession_id", s."StripePrice_id", s."Status", s."CurrentPeriodStart", s."CurrentPeriodEnd", s."CancelAtPeriodEnd", s."CanceledAt", s."CreatedAt", s."UpdatedAt", p."Name" AS "PlanName", r."Name" AS "PlanRoleName"
+FROM "Subscriptions" s
+LEFT JOIN "Plans" p ON p."Id" = s."PlanId"
+LEFT JOIN "Roles" r ON r."Id" = p."RoleId"
+LEFT JOIN "AspNetUsers" u ON u."Id" = s."UserId"
+WHERE s."Id" = $1
+`
+
+type GetSubscriptionByIdRow struct {
+	Id                      pgtype.UUID      `db:"Id" json:"Id"`
+	UserId                  pgtype.UUID      `db:"UserId" json:"UserId"`
+	UserEmail               pgtype.Text      `db:"UserEmail" json:"UserEmail"`
+	PlanId                  pgtype.UUID      `db:"PlanId" json:"PlanId"`
+	StripeCustomerID        string           `db:"StripeCustomer_id" json:"StripeCustomer_id"`
+	StripeSubscriptionID    string           `db:"StripeSubscription_id" json:"StripeSubscription_id"`
+	StripeCheckoutSessionID pgtype.Text      `db:"StripeCheckoutSession_id" json:"StripeCheckoutSession_id"`
+	StripePriceID           pgtype.Text      `db:"StripePrice_id" json:"StripePrice_id"`
+	Status                  string           `db:"Status" json:"Status"`
+	CurrentPeriodStart      pgtype.Timestamp `db:"CurrentPeriodStart" json:"CurrentPeriodStart"`
+	CurrentPeriodEnd        pgtype.Timestamp `db:"CurrentPeriodEnd" json:"CurrentPeriodEnd"`
+	CancelAtPeriodEnd       bool             `db:"CancelAtPeriodEnd" json:"CancelAtPeriodEnd"`
+	CanceledAt              pgtype.Timestamp `db:"CanceledAt" json:"CanceledAt"`
+	CreatedAt               pgtype.Timestamp `db:"CreatedAt" json:"CreatedAt"`
+	UpdatedAt               pgtype.Timestamp `db:"UpdatedAt" json:"UpdatedAt"`
+	PlanName                pgtype.Text      `db:"PlanName" json:"PlanName"`
+	PlanRoleName            pgtype.Text      `db:"PlanRoleName" json:"PlanRoleName"`
+}
+
+func (q *Queries) GetSubscriptionById(ctx context.Context, id pgtype.UUID) (GetSubscriptionByIdRow, error) {
 	row := q.db.QueryRow(ctx, getSubscriptionById, id)
+	var i GetSubscriptionByIdRow
+	err := row.Scan(
+		&i.Id,
+		&i.UserId,
+		&i.UserEmail,
+		&i.PlanId,
+		&i.StripeCustomerID,
+		&i.StripeSubscriptionID,
+		&i.StripeCheckoutSessionID,
+		&i.StripePriceID,
+		&i.Status,
+		&i.CurrentPeriodStart,
+		&i.CurrentPeriodEnd,
+		&i.CancelAtPeriodEnd,
+		&i.CanceledAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.PlanName,
+		&i.PlanRoleName,
+	)
+	return i, err
+}
+
+const getSubscriptionByStripeSubscriptionId = `-- name: GetSubscriptionByStripeSubscriptionId :one
+SELECT "Id", "UserId", "PlanId", "StripeCustomer_id", "StripeSubscription_id", "StripeCheckoutSession_id", "StripePrice_id", "Status", "CurrentPeriodStart", "CurrentPeriodEnd", "CancelAtPeriodEnd", "CanceledAt", "CreatedAt", "UpdatedAt"
+FROM "Subscriptions"
+WHERE "StripeSubscription_id" = $1
+`
+
+func (q *Queries) GetSubscriptionByStripeSubscriptionId(ctx context.Context, stripesubscriptionID string) (Subscription, error) {
+	row := q.db.QueryRow(ctx, getSubscriptionByStripeSubscriptionId, stripesubscriptionID)
 	var i Subscription
 	err := row.Scan(
 		&i.Id,
@@ -1890,6 +2061,8 @@ const getSubscriptionByUserId = `-- name: GetSubscriptionByUserId :one
 SELECT "Id", "UserId", "PlanId", "StripeCustomer_id", "StripeSubscription_id", "StripeCheckoutSession_id", "StripePrice_id", "Status", "CurrentPeriodStart", "CurrentPeriodEnd", "CancelAtPeriodEnd", "CanceledAt", "CreatedAt", "UpdatedAt"
 FROM "Subscriptions"
 WHERE "UserId" = $1
+ORDER BY "CreatedAt" DESC, "UpdatedAt" DESC
+LIMIT 1
 `
 
 func (q *Queries) GetSubscriptionByUserId(ctx context.Context, userid pgtype.UUID) (Subscription, error) {
@@ -1912,6 +2085,137 @@ func (q *Queries) GetSubscriptionByUserId(ctx context.Context, userid pgtype.UUI
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const getSubscriptions = `-- name: GetSubscriptions :many
+SELECT s."Id", u."Email" AS "UserEmail", s."PlanId", s."StripeCustomer_id", s."StripeSubscription_id", s."StripeCheckoutSession_id", s."StripePrice_id", s."Status", s."CurrentPeriodStart", s."CurrentPeriodEnd", s."CancelAtPeriodEnd", s."CanceledAt", s."CreatedAt", s."UpdatedAt", p."Name" AS "PlanName", r."Name" AS "PlanRoleName"
+FROM "Subscriptions" s
+LEFT JOIN "Plans" p ON p."Id" = s."PlanId"
+LEFT JOIN "AspNetUsers" u ON u."Id" = s."UserId"
+LEFT JOIN "Roles" r ON r."Id" = p."RoleId"
+ORDER BY s."CreatedAt" DESC
+`
+
+type GetSubscriptionsRow struct {
+	Id                      pgtype.UUID      `db:"Id" json:"Id"`
+	UserEmail               pgtype.Text      `db:"UserEmail" json:"UserEmail"`
+	PlanId                  pgtype.UUID      `db:"PlanId" json:"PlanId"`
+	StripeCustomerID        string           `db:"StripeCustomer_id" json:"StripeCustomer_id"`
+	StripeSubscriptionID    string           `db:"StripeSubscription_id" json:"StripeSubscription_id"`
+	StripeCheckoutSessionID pgtype.Text      `db:"StripeCheckoutSession_id" json:"StripeCheckoutSession_id"`
+	StripePriceID           pgtype.Text      `db:"StripePrice_id" json:"StripePrice_id"`
+	Status                  string           `db:"Status" json:"Status"`
+	CurrentPeriodStart      pgtype.Timestamp `db:"CurrentPeriodStart" json:"CurrentPeriodStart"`
+	CurrentPeriodEnd        pgtype.Timestamp `db:"CurrentPeriodEnd" json:"CurrentPeriodEnd"`
+	CancelAtPeriodEnd       bool             `db:"CancelAtPeriodEnd" json:"CancelAtPeriodEnd"`
+	CanceledAt              pgtype.Timestamp `db:"CanceledAt" json:"CanceledAt"`
+	CreatedAt               pgtype.Timestamp `db:"CreatedAt" json:"CreatedAt"`
+	UpdatedAt               pgtype.Timestamp `db:"UpdatedAt" json:"UpdatedAt"`
+	PlanName                pgtype.Text      `db:"PlanName" json:"PlanName"`
+	PlanRoleName            pgtype.Text      `db:"PlanRoleName" json:"PlanRoleName"`
+}
+
+func (q *Queries) GetSubscriptions(ctx context.Context) ([]GetSubscriptionsRow, error) {
+	rows, err := q.db.Query(ctx, getSubscriptions)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetSubscriptionsRow
+	for rows.Next() {
+		var i GetSubscriptionsRow
+		if err := rows.Scan(
+			&i.Id,
+			&i.UserEmail,
+			&i.PlanId,
+			&i.StripeCustomerID,
+			&i.StripeSubscriptionID,
+			&i.StripeCheckoutSessionID,
+			&i.StripePriceID,
+			&i.Status,
+			&i.CurrentPeriodStart,
+			&i.CurrentPeriodEnd,
+			&i.CancelAtPeriodEnd,
+			&i.CanceledAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.PlanName,
+			&i.PlanRoleName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getSubscriptionsByUserId = `-- name: GetSubscriptionsByUserId :many
+SELECT s."Id", u."Email" AS "UserEmail", s."PlanId", s."StripeCustomer_id", s."StripeSubscription_id", s."StripeCheckoutSession_id", s."StripePrice_id", s."Status", s."CurrentPeriodStart", s."CurrentPeriodEnd", s."CancelAtPeriodEnd", s."CanceledAt", s."CreatedAt", s."UpdatedAt", p."Name" AS "PlanName", r."Name" AS "PlanRoleName"
+FROM "Subscriptions" s
+LEFT JOIN "Plans" p ON p."Id" = s."PlanId"
+LEFT JOIN "AspNetUsers" u ON u."Id" = s."UserId"
+LEFT JOIN "Roles" r ON r."Id" = p."RoleId"
+WHERE s."UserId" = $1
+ORDER BY s."CreatedAt" DESC
+`
+
+type GetSubscriptionsByUserIdRow struct {
+	Id                      pgtype.UUID      `db:"Id" json:"Id"`
+	UserEmail               pgtype.Text      `db:"UserEmail" json:"UserEmail"`
+	PlanId                  pgtype.UUID      `db:"PlanId" json:"PlanId"`
+	StripeCustomerID        string           `db:"StripeCustomer_id" json:"StripeCustomer_id"`
+	StripeSubscriptionID    string           `db:"StripeSubscription_id" json:"StripeSubscription_id"`
+	StripeCheckoutSessionID pgtype.Text      `db:"StripeCheckoutSession_id" json:"StripeCheckoutSession_id"`
+	StripePriceID           pgtype.Text      `db:"StripePrice_id" json:"StripePrice_id"`
+	Status                  string           `db:"Status" json:"Status"`
+	CurrentPeriodStart      pgtype.Timestamp `db:"CurrentPeriodStart" json:"CurrentPeriodStart"`
+	CurrentPeriodEnd        pgtype.Timestamp `db:"CurrentPeriodEnd" json:"CurrentPeriodEnd"`
+	CancelAtPeriodEnd       bool             `db:"CancelAtPeriodEnd" json:"CancelAtPeriodEnd"`
+	CanceledAt              pgtype.Timestamp `db:"CanceledAt" json:"CanceledAt"`
+	CreatedAt               pgtype.Timestamp `db:"CreatedAt" json:"CreatedAt"`
+	UpdatedAt               pgtype.Timestamp `db:"UpdatedAt" json:"UpdatedAt"`
+	PlanName                pgtype.Text      `db:"PlanName" json:"PlanName"`
+	PlanRoleName            pgtype.Text      `db:"PlanRoleName" json:"PlanRoleName"`
+}
+
+func (q *Queries) GetSubscriptionsByUserId(ctx context.Context, userid pgtype.UUID) ([]GetSubscriptionsByUserIdRow, error) {
+	rows, err := q.db.Query(ctx, getSubscriptionsByUserId, userid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetSubscriptionsByUserIdRow
+	for rows.Next() {
+		var i GetSubscriptionsByUserIdRow
+		if err := rows.Scan(
+			&i.Id,
+			&i.UserEmail,
+			&i.PlanId,
+			&i.StripeCustomerID,
+			&i.StripeSubscriptionID,
+			&i.StripeCheckoutSessionID,
+			&i.StripePriceID,
+			&i.Status,
+			&i.CurrentPeriodStart,
+			&i.CurrentPeriodEnd,
+			&i.CancelAtPeriodEnd,
+			&i.CanceledAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.PlanName,
+			&i.PlanRoleName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
@@ -2043,6 +2347,19 @@ func (q *Queries) GetUserCv(ctx context.Context, userid pgtype.UUID) (GetUserCvR
 	return i, err
 }
 
+const getUserIdByStripeCustomerId = `-- name: GetUserIdByStripeCustomerId :one
+SELECT "UserId"
+FROM "StripeCustomers"
+WHERE "StripeCustomerId" = $1
+`
+
+func (q *Queries) GetUserIdByStripeCustomerId(ctx context.Context, stripecustomerid string) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, getUserIdByStripeCustomerId, stripecustomerid)
+	var UserId pgtype.UUID
+	err := row.Scan(&UserId)
+	return UserId, err
+}
+
 const getUserJobStats = `-- name: GetUserJobStats :one
 SELECT
     COUNT(*)::int AS total,
@@ -2142,12 +2459,58 @@ func (q *Queries) GetUserQuestions(ctx context.Context, userid pgtype.UUID) ([]G
 	return items, nil
 }
 
+const insertSubscriptionFromCheckout = `-- name: InsertSubscriptionFromCheckout :execrows
+INSERT INTO "Subscriptions" (
+  "UserId", "PlanId", "StripeCustomer_id", "StripeSubscription_id",
+  "StripeCheckoutSession_id", "Status", "CancelAtPeriodEnd", "CreatedAt", "UpdatedAt"
+)
+VALUES ($1, $2, $3, $4, $5, 'incomplete', FALSE, NOW(), NOW())
+ON CONFLICT ("StripeSubscription_id") DO NOTHING
+`
+
+type InsertSubscriptionFromCheckoutParams struct {
+	UserId                  pgtype.UUID `db:"UserId" json:"UserId"`
+	PlanId                  pgtype.UUID `db:"PlanId" json:"PlanId"`
+	StripeCustomerID        string      `db:"StripeCustomer_id" json:"StripeCustomer_id"`
+	StripeSubscriptionID    string      `db:"StripeSubscription_id" json:"StripeSubscription_id"`
+	StripeCheckoutSessionID pgtype.Text `db:"StripeCheckoutSession_id" json:"StripeCheckoutSession_id"`
+}
+
+func (q *Queries) InsertSubscriptionFromCheckout(ctx context.Context, arg InsertSubscriptionFromCheckoutParams) (int64, error) {
+	result, err := q.db.Exec(ctx, insertSubscriptionFromCheckout,
+		arg.UserId,
+		arg.PlanId,
+		arg.StripeCustomerID,
+		arg.StripeSubscriptionID,
+		arg.StripeCheckoutSessionID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const markResetTokenAsUsed = `-- name: MarkResetTokenAsUsed :exec
 UPDATE "PasswordResetTokens" SET "Used" = true WHERE "Id" = $1
 `
 
 func (q *Queries) MarkResetTokenAsUsed(ctx context.Context, id pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, markResetTokenAsUsed, id)
+	return err
+}
+
+const removeRoleFromUser = `-- name: RemoveRoleFromUser :exec
+DELETE FROM "UserRoles"
+WHERE "UserId" = $1 AND "RoleId" = $2
+`
+
+type RemoveRoleFromUserParams struct {
+	UserId pgtype.UUID `db:"UserId" json:"UserId"`
+	RoleId pgtype.UUID `db:"RoleId" json:"RoleId"`
+}
+
+func (q *Queries) RemoveRoleFromUser(ctx context.Context, arg RemoveRoleFromUserParams) error {
+	_, err := q.db.Exec(ctx, removeRoleFromUser, arg.UserId, arg.RoleId)
 	return err
 }
 
@@ -2211,6 +2574,47 @@ func (q *Queries) SaveUserCv(ctx context.Context, arg SaveUserCvParams) error {
 		arg.LastModifiedAt,
 	)
 	return err
+}
+
+const setSubscriptionCheckoutSession = `-- name: SetSubscriptionCheckoutSession :execrows
+UPDATE "Subscriptions"
+SET "StripeCheckoutSession_id" = $2,
+    "StripeCustomer_id" = CASE WHEN $3::text IS NOT NULL THEN $3::text ELSE "StripeCustomer_id" END,
+    "UpdatedAt" = NOW()
+WHERE "StripeSubscription_id" = $1
+`
+
+type SetSubscriptionCheckoutSessionParams struct {
+	StripeSubscriptionID    string      `db:"StripeSubscription_id" json:"StripeSubscription_id"`
+	StripeCheckoutSessionID pgtype.Text `db:"StripeCheckoutSession_id" json:"StripeCheckoutSession_id"`
+	CustomerID              pgtype.Text `db:"customer_id" json:"customer_id"`
+}
+
+func (q *Queries) SetSubscriptionCheckoutSession(ctx context.Context, arg SetSubscriptionCheckoutSessionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setSubscriptionCheckoutSession, arg.StripeSubscriptionID, arg.StripeCheckoutSessionID, arg.CustomerID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const tryInsertWebhookEvent = `-- name: TryInsertWebhookEvent :one
+INSERT INTO "StripeWebhookEvents" ("Id", "Type", "ProcessedAt")
+VALUES ($1, $2, NOW())
+ON CONFLICT ("Id") DO NOTHING
+RETURNING "Id"
+`
+
+type TryInsertWebhookEventParams struct {
+	Id   string `db:"Id" json:"Id"`
+	Type string `db:"Type" json:"Type"`
+}
+
+func (q *Queries) TryInsertWebhookEvent(ctx context.Context, arg TryInsertWebhookEventParams) (string, error) {
+	row := q.db.QueryRow(ctx, tryInsertWebhookEvent, arg.Id, arg.Type)
+	var Id string
+	err := row.Scan(&Id)
+	return Id, err
 }
 
 const updatePlan = `-- name: UpdatePlan :exec
@@ -2325,7 +2729,7 @@ type UpdateSubscriptionParams struct {
 	StripeCustomerID        string           `db:"StripeCustomer_id" json:"StripeCustomer_id"`
 	StripeSubscriptionID    string           `db:"StripeSubscription_id" json:"StripeSubscription_id"`
 	StripeCheckoutSessionID pgtype.Text      `db:"StripeCheckoutSession_id" json:"StripeCheckoutSession_id"`
-	StripePriceID           string           `db:"StripePrice_id" json:"StripePrice_id"`
+	StripePriceID           pgtype.Text      `db:"StripePrice_id" json:"StripePrice_id"`
 	Status                  string           `db:"Status" json:"Status"`
 	CurrentPeriodStart      pgtype.Timestamp `db:"CurrentPeriodStart" json:"CurrentPeriodStart"`
 	CurrentPeriodEnd        pgtype.Timestamp `db:"CurrentPeriodEnd" json:"CurrentPeriodEnd"`
@@ -2444,4 +2848,119 @@ type UpdateUserSearchQueryParams struct {
 func (q *Queries) UpdateUserSearchQuery(ctx context.Context, arg UpdateUserSearchQueryParams) error {
 	_, err := q.db.Exec(ctx, updateUserSearchQuery, arg.UserId, arg.SearchQueryId)
 	return err
+}
+
+const upsertStripeCustomer = `-- name: UpsertStripeCustomer :exec
+INSERT INTO "StripeCustomers" ("UserId", "StripeCustomerId", "CreatedAt", "UpdatedAt")
+VALUES ($1, $2, NOW(), NOW())
+ON CONFLICT ("UserId") DO UPDATE SET
+  "StripeCustomerId" = EXCLUDED."StripeCustomerId",
+  "UpdatedAt" = NOW()
+`
+
+type UpsertStripeCustomerParams struct {
+	UserId           pgtype.UUID `db:"UserId" json:"UserId"`
+	StripeCustomerId string      `db:"StripeCustomerId" json:"StripeCustomerId"`
+}
+
+func (q *Queries) UpsertStripeCustomer(ctx context.Context, arg UpsertStripeCustomerParams) error {
+	_, err := q.db.Exec(ctx, upsertStripeCustomer, arg.UserId, arg.StripeCustomerId)
+	return err
+}
+
+const upsertStripeInvoice = `-- name: UpsertStripeInvoice :exec
+INSERT INTO "StripeInvoices" (
+  "StripeInvoiceId", "StripeSubscriptionId", "StripeCustomerId",
+  "AmountPaid", "Currency", "Status", "PaidAt", "CreatedAt", "UpdatedAt"
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+ON CONFLICT ("StripeInvoiceId") DO UPDATE SET
+  "StripeSubscriptionId" = COALESCE(EXCLUDED."StripeSubscriptionId", "StripeInvoices"."StripeSubscriptionId"),
+  "StripeCustomerId" = COALESCE(EXCLUDED."StripeCustomerId", "StripeInvoices"."StripeCustomerId"),
+  "AmountPaid" = COALESCE(EXCLUDED."AmountPaid", "StripeInvoices"."AmountPaid"),
+  "Currency" = COALESCE(EXCLUDED."Currency", "StripeInvoices"."Currency"),
+  "Status" = EXCLUDED."Status",
+  "PaidAt" = COALESCE(EXCLUDED."PaidAt", "StripeInvoices"."PaidAt"),
+  "UpdatedAt" = NOW()
+`
+
+type UpsertStripeInvoiceParams struct {
+	StripeInvoiceId      string             `db:"StripeInvoiceId" json:"StripeInvoiceId"`
+	StripeSubscriptionId pgtype.Text        `db:"StripeSubscriptionId" json:"StripeSubscriptionId"`
+	StripeCustomerId     pgtype.Text        `db:"StripeCustomerId" json:"StripeCustomerId"`
+	AmountPaid           pgtype.Int8        `db:"AmountPaid" json:"AmountPaid"`
+	Currency             pgtype.Text        `db:"Currency" json:"Currency"`
+	Status               string             `db:"Status" json:"Status"`
+	PaidAt               pgtype.Timestamptz `db:"PaidAt" json:"PaidAt"`
+}
+
+func (q *Queries) UpsertStripeInvoice(ctx context.Context, arg UpsertStripeInvoiceParams) error {
+	_, err := q.db.Exec(ctx, upsertStripeInvoice,
+		arg.StripeInvoiceId,
+		arg.StripeSubscriptionId,
+		arg.StripeCustomerId,
+		arg.AmountPaid,
+		arg.Currency,
+		arg.Status,
+		arg.PaidAt,
+	)
+	return err
+}
+
+const upsertSubscription = `-- name: UpsertSubscription :one
+INSERT INTO "Subscriptions" (
+  "UserId", "PlanId", "StripeCustomer_id", "StripeSubscription_id",
+  "StripeCheckoutSession_id", "StripePrice_id", "Status",
+  "CurrentPeriodStart", "CurrentPeriodEnd", "CancelAtPeriodEnd",
+  "CanceledAt", "CreatedAt", "UpdatedAt"
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), $12)
+ON CONFLICT ("StripeSubscription_id") DO UPDATE SET
+  "UserId" = EXCLUDED."UserId",
+  "PlanId" = EXCLUDED."PlanId",
+  "StripeCustomer_id" = EXCLUDED."StripeCustomer_id",
+  "StripeCheckoutSession_id" = COALESCE(EXCLUDED."StripeCheckoutSession_id", "Subscriptions"."StripeCheckoutSession_id"),
+  "StripePrice_id" = COALESCE(EXCLUDED."StripePrice_id", "Subscriptions"."StripePrice_id"),
+  "Status" = EXCLUDED."Status",
+  "CurrentPeriodStart" = COALESCE(EXCLUDED."CurrentPeriodStart", "Subscriptions"."CurrentPeriodStart"),
+  "CurrentPeriodEnd" = COALESCE(EXCLUDED."CurrentPeriodEnd", "Subscriptions"."CurrentPeriodEnd"),
+  "CancelAtPeriodEnd" = EXCLUDED."CancelAtPeriodEnd",
+  "CanceledAt" = COALESCE(EXCLUDED."CanceledAt", "Subscriptions"."CanceledAt"),
+  "UpdatedAt" = EXCLUDED."UpdatedAt"
+RETURNING "Id"
+`
+
+type UpsertSubscriptionParams struct {
+	UserId                  pgtype.UUID      `db:"UserId" json:"UserId"`
+	PlanId                  pgtype.UUID      `db:"PlanId" json:"PlanId"`
+	StripeCustomerID        string           `db:"StripeCustomer_id" json:"StripeCustomer_id"`
+	StripeSubscriptionID    string           `db:"StripeSubscription_id" json:"StripeSubscription_id"`
+	StripeCheckoutSessionID pgtype.Text      `db:"StripeCheckoutSession_id" json:"StripeCheckoutSession_id"`
+	StripePriceID           pgtype.Text      `db:"StripePrice_id" json:"StripePrice_id"`
+	Status                  string           `db:"Status" json:"Status"`
+	CurrentPeriodStart      pgtype.Timestamp `db:"CurrentPeriodStart" json:"CurrentPeriodStart"`
+	CurrentPeriodEnd        pgtype.Timestamp `db:"CurrentPeriodEnd" json:"CurrentPeriodEnd"`
+	CancelAtPeriodEnd       bool             `db:"CancelAtPeriodEnd" json:"CancelAtPeriodEnd"`
+	CanceledAt              pgtype.Timestamp `db:"CanceledAt" json:"CanceledAt"`
+	UpdatedAt               pgtype.Timestamp `db:"UpdatedAt" json:"UpdatedAt"`
+}
+
+func (q *Queries) UpsertSubscription(ctx context.Context, arg UpsertSubscriptionParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, upsertSubscription,
+		arg.UserId,
+		arg.PlanId,
+		arg.StripeCustomerID,
+		arg.StripeSubscriptionID,
+		arg.StripeCheckoutSessionID,
+		arg.StripePriceID,
+		arg.Status,
+		arg.CurrentPeriodStart,
+		arg.CurrentPeriodEnd,
+		arg.CancelAtPeriodEnd,
+		arg.CanceledAt,
+		arg.UpdatedAt,
+	)
+	var Id pgtype.UUID
+	err := row.Scan(&Id)
+	return Id, err
 }

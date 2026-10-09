@@ -1,11 +1,15 @@
 package handlers
 
 import (
+	"context"
 	"errors"
+	"fmt"
+	"log"
 	"net/http"
 	"time"
 
 	"job-agent-api/internal/database"
+	"job-agent-api/internal/dto"
 	sqlc "job-agent-api/internal/queries"
 
 	"github.com/jackc/pgx/v5"
@@ -17,27 +21,29 @@ import (
 const DefaultPlanRoleID = "a2238759-645f-4d7e-867e-1ccf3d86afef"
 
 type Plan struct {
-	Name          string
-	Description   string
-	StripePriceID string
+	Name            string
+	Description     string
+	StripePriceID   string
 	StripeProductID string
-	Price         int64
-	Active        bool
-	RoleId        string
+	Price           int64
+	Active          bool
+	RoleId          string
 	// DeactivateOnly indica que o evento so pode desativar o plano,
 	// nunca reativar (ex.: eventos de price nao devem reativar um plano
 	// desativado pelo produto).
 	DeactivateOnly bool
 }
 
-func CreatePlan(c *echo.Context, db *database.Database, plan Plan) error {		
-	alreadyExists, err := db.Query.ExistsPlanByProductId(c.Request().Context(), plan.StripeProductID)
+// CreatePlan cria ou atualiza um plano a partir de um evento do Stripe.
+// Recebe um stripeWebhookStore para que rode dentro da transação do webhook.
+func CreatePlan(ctx context.Context, store stripeWebhookStore, plan Plan) (string, error) {
+	alreadyExists, err := store.ExistsPlanByProductId(ctx, plan.StripeProductID)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return "", err
 	}
 
 	if alreadyExists {
-		return MergePlan(c, db, plan)
+		return MergePlan(ctx, store, plan)
 	}
 
 	roleID := plan.RoleId
@@ -46,35 +52,32 @@ func CreatePlan(c *echo.Context, db *database.Database, plan Plan) error {
 	}
 
 	var roleId pgtype.UUID
-	err = roleId.Scan(roleID)
-	if err != nil {
-		return c.JSON(400, map[string]string{
-			"error": "Invalid roleId parameter",
-		})
+	if err := roleId.Scan(roleID); err != nil {
+		return "", fmt.Errorf("invalid roleId %q: %w", roleID, err)
 	}
 
-	err = db.Query.CreatePlan(c.Request().Context(), sqlc.CreatePlanParams{
-		Name:          plan.Name,
-		Description:   pgtype.Text{String: plan.Description, Valid: plan.Description != ""},
-		StripePriceID: pgtype.Text{String: plan.StripePriceID, Valid: plan.StripePriceID != ""},
-		StripeProductID:  plan.StripeProductID,
-		Price:         int32(plan.Price),
-		Active:        plan.Active,
-		RoleId:        roleId,
+	err = store.CreatePlan(ctx, sqlc.CreatePlanParams{
+		Name:            plan.Name,
+		Description:     pgtype.Text{String: plan.Description, Valid: plan.Description != ""},
+		StripePriceID:   pgtype.Text{String: plan.StripePriceID, Valid: plan.StripePriceID != ""},
+		StripeProductID: plan.StripeProductID,
+		Price:           int32(plan.Price),
+		Active:          plan.Active,
+		RoleId:          roleId,
 	})
 	if err != nil {
 		if isDuplicateKey(err) {
-			return MergePlan(c, db, plan)
+			return MergePlan(ctx, store, plan)
 		}
-		return c.JSON(500, map[string]string{"error": err.Error()})
+		return "", err
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{"message": "Plan created successfully"})
+	return "Plan created successfully", nil
 }
 
-func MergePlan(c *echo.Context, db *database.Database, plan Plan) error {
-	ctx := c.Request().Context()
-
+// MergePlan atualiza um plano já existente preservando os campos que o
+// evento não trouxe.
+func MergePlan(ctx context.Context, store stripeWebhookStore, plan Plan) (string, error) {
 	existingProductID := plan.StripeProductID
 	existingName := ""
 	var existingDescription pgtype.Text
@@ -82,7 +85,7 @@ func MergePlan(c *echo.Context, db *database.Database, plan Plan) error {
 	var existingPriceID pgtype.Text
 	var existingActive bool
 
-	byProduct, err := db.Query.GetPlanByStripeProductID(ctx, plan.StripeProductID)
+	byProduct, err := store.GetPlanByStripeProductID(ctx, plan.StripeProductID)
 	if err == nil {
 		existingName = byProduct.Name
 		existingDescription = byProduct.Description
@@ -90,12 +93,15 @@ func MergePlan(c *echo.Context, db *database.Database, plan Plan) error {
 		existingPriceID = byProduct.StripePriceID
 		existingActive = byProduct.Active
 	} else if errors.Is(err, pgx.ErrNoRows) && plan.StripePriceID != "" {
-		byPrice, priceErr := db.Query.GetPlanByPriceId(ctx, pgtype.Text{String: plan.StripePriceID, Valid: true})
+		byPrice, priceErr := store.GetPlanByPriceId(ctx, pgtype.Text{String: plan.StripePriceID, Valid: true})
 		if priceErr != nil {
 			if errors.Is(priceErr, pgx.ErrNoRows) {
-				return c.JSON(http.StatusNotFound, map[string]string{"error": "Plan not found"})
+				// Estado do banco não permite o merge; reprocessar o mesmo
+				// evento produziria o mesmo resultado — não retenir o webhook.
+				log.Printf("merge plan: product %s / price %s não encontrado", plan.StripeProductID, plan.StripePriceID)
+				return "Plan not found; nothing to merge.", nil
 			}
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": priceErr.Error()})
+			return "", priceErr
 		}
 		existingProductID = byPrice.StripeProductID
 		existingName = byPrice.Name
@@ -103,8 +109,11 @@ func MergePlan(c *echo.Context, db *database.Database, plan Plan) error {
 		existingPrice = byPrice.Price
 		existingPriceID = byPrice.StripePriceID
 		existingActive = byPrice.Active
+	} else if errors.Is(err, pgx.ErrNoRows) {
+		log.Printf("merge plan: product %s não encontrado", plan.StripeProductID)
+		return "Plan not found; nothing to merge.", nil
 	} else {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return "", err
 	}
 
 	stripePriceID := plan.StripePriceID
@@ -132,20 +141,42 @@ func MergePlan(c *echo.Context, db *database.Database, plan Plan) error {
 		active = existingActive
 	}
 
-	err = db.Query.UpdatePlan(ctx, sqlc.UpdatePlanParams{
+	err = store.UpdatePlan(ctx, sqlc.UpdatePlanParams{
 		StripeProductID: existingProductID,
 		StripePriceID:   pgtype.Text{String: stripePriceID, Valid: stripePriceID != ""},
 		Name:            name,
 		Description:     pgtype.Text{String: description, Valid: description != ""},
 		Price:           int32(price),
 		Active:          active,
-		UpdatedAt:       pgtype.Timestamp{Time: time.Now(), Valid: true},
+		UpdatedAt:       pgtype.Timestamp{Time: time.Now().UTC(), Valid: true},
 	})
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return "", err
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{"message": "Plan updated successfully"})
+	return "Plan updated successfully", nil
+}
+
+// DeactivatePlan desativa um plano (soft delete lógico via Active=false).
+func DeactivatePlan(ctx context.Context, store stripeWebhookStore, plan Plan) (string, error) {
+	exists, err := store.ExistsPlanByProductId(ctx, plan.StripeProductID)
+	if err != nil {
+		return "", err
+	}
+
+	if !exists {
+		return "Plan not found, nothing to deactivate", nil
+	}
+
+	err = store.DeactivatePlan(ctx, sqlc.DeactivatePlanParams{
+		StripeProductID: plan.StripeProductID,
+		UpdatedAt:       pgtype.Timestamp{Time: time.Now().UTC(), Valid: true},
+	})
+	if err != nil {
+		return "", err
+	}
+
+	return "Plan deactivated successfully", nil
 }
 
 func isDuplicateKey(err error) bool {
@@ -159,7 +190,35 @@ func GetPlans(c *echo.Context, db *database.Database) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	return c.JSON(http.StatusOK, map[string]interface{}{"message": "Plan created successfully", "data": plans})
+	// Mapeia para DTO para emitir o preço em reais (o banco guarda centavos).
+	// Mantém as chaves PascalCase (Id/Name/Description/Price) do contrato público.
+	result := make([]dto.PublicPlanResponse, 0, len(plans))
+	for _, plan := range plans {
+		result = append(result, dto.MapPublicPlanResponse(plan))
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{"message": "Plans listed successfully", "data": result})
+}
+
+// GetAdminPlans lista TODOS os planos (ativos e inativos) com campos completos
+// em camelCase, para o painel admin.
+func GetAdminPlans(c *echo.Context, db *database.Database) error {
+	plans, err := db.Query.GetAllPlans(c.Request().Context())
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	result := make([]dto.PlanResponse, 0, len(plans))
+	for _, plan := range plans {
+		result = append(result, dto.MapPlanResponse(plan))
+	}
+
+	// map (e não dto.ResponseBase) para garantir que listas vazias sejam
+	// emitidas como "data": [] — ResponseBase usa omitempty e omitiria o campo.
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"message": "Plans listed successfully",
+		"data":    result,
+	})
 }
 
 func UpdatePlan(c *echo.Context, db *database.Database, plan Plan) error {
@@ -212,26 +271,3 @@ func UpdatePlan(c *echo.Context, db *database.Database, plan Plan) error {
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "Plan updated successfully"})
 }
-
-func DeactivatePlan(c *echo.Context, db *database.Database, plan Plan) error {
-
-	exists, err := db.Query.ExistsPlanByProductId(c.Request().Context(), plan.StripeProductID)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
-	}
-
-	if (!exists) {
-		return c.JSON(http.StatusOK, map[string]string{"message": "Plan not found, nothing to deactivate"})
-	}
-
-	err = db.Query.DeactivatePlan(c.Request().Context(), sqlc.DeactivatePlanParams{
-		StripeProductID: plan.StripeProductID,
-		UpdatedAt:       pgtype.Timestamp{Time: time.Now(), Valid: true},
-	})
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
-	}
-
-	return c.JSON(http.StatusOK, map[string]string{"message": "Plan deactivated successfully"})
-}
-

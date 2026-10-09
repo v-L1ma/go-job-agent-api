@@ -264,8 +264,8 @@ CREATE TABLE public."Subscriptions" (
   "PlanId" UUID NOT NULL,
   "StripeCustomer_id" VARCHAR(255) NOT NULL,
   "StripeSubscription_id" VARCHAR(255) NOT NULL UNIQUE,
-  "StripeCheckoutSession_id" VARCHAR(255),
-  "StripePrice_id" VARCHAR(255) NOT NULL,
+  "StripeCheckoutSession_id" VARCHAR(255) UNIQUE,
+  "StripePrice_id" VARCHAR(255) NULL,
   "Status" VARCHAR(50) NOT NULL,
   "CurrentPeriodStart" TIMESTAMP,
   "CurrentPeriodEnd" TIMESTAMP,
@@ -276,6 +276,43 @@ CREATE TABLE public."Subscriptions" (
   CONSTRAINT fk_subscriptions_users FOREIGN KEY ("UserId") REFERENCES "AspNetUsers" ("Id") ON DELETE CASCADE,
   CONSTRAINT fk_subscriptions_plans FOREIGN KEY ("PlanId") REFERENCES "Plans" ("Id") ON DELETE RESTRICT
 );
+
+CREATE INDEX IF NOT EXISTS IX_Subscriptions_UserId ON public."Subscriptions" USING btree ("UserId");
+
+-- Idempotência de webhooks: cada event.id do Stripe é processado no máximo uma vez.
+CREATE TABLE IF NOT EXISTS public."StripeWebhookEvents" (
+  "Id" VARCHAR(255) NOT NULL PRIMARY KEY,
+  "Type" VARCHAR(100) NOT NULL,
+  "ProcessedAt" TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Relação persistente usuário da aplicação <-> Stripe Customer.
+CREATE TABLE IF NOT EXISTS public."StripeCustomers" (
+  "UserId" UUID NOT NULL PRIMARY KEY,
+  "StripeCustomerId" VARCHAR(255) NOT NULL UNIQUE,
+  "CreatedAt" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "UpdatedAt" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT fk_stripecustomers_users FOREIGN KEY ("UserId") REFERENCES "AspNetUsers" ("Id") ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS IX_StripeCustomers_StripeCustomerId ON public."StripeCustomers" USING btree ("StripeCustomerId");
+
+-- Registro de cobranças (invoice.paid / invoice.payment_failed).
+-- Sem FK estrita para Subscriptions: o evento pode chegar antes da linha da
+-- assinatura existir (ordem de entrega do Stripe não é garantida).
+CREATE TABLE IF NOT EXISTS public."StripeInvoices" (
+  "StripeInvoiceId" VARCHAR(255) NOT NULL PRIMARY KEY,
+  "StripeSubscriptionId" VARCHAR(255) NULL,
+  "StripeCustomerId" VARCHAR(255) NULL,
+  "AmountPaid" BIGINT NULL,
+  "Currency" VARCHAR(10) NULL,
+  "Status" VARCHAR(50) NOT NULL,
+  "PaidAt" TIMESTAMPTZ NULL,
+  "CreatedAt" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "UpdatedAt" TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS IX_StripeInvoices_StripeSubscriptionId ON public."StripeInvoices" USING btree ("StripeSubscriptionId");
 
 CREATE TABLE public."Plans" (
   "Id" UUID PRIMARY KEY default gen_random_uuid (),
