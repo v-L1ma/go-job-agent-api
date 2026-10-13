@@ -40,6 +40,22 @@ jobs_base AS (
         sqlc.narg('platform')::text IS NULL
         OR j."Platform" = sqlc.narg('platform')::text
     )
+    /*
+     * Filtros de texto (case-insensitive) aplicados AQUI, na mesma CTE onde
+     * o "platform" já é filtrado — ou seja, ANTES da comparação do cursor
+     * (que acontece em final_jobs). Assim a paginação por cursor continua
+     * estável: o cursor sempre percorre o MESMO conjunto filtrado.
+     *
+     * "stack" casa com o TÍTULO da vaga (o rótulo da UI é "Cargo ou Stack").
+     */
+    AND (
+        sqlc.narg('stack')::text IS NULL
+        OR j."Title" ILIKE '%' || sqlc.narg('stack')::text || '%'
+    )
+    AND (
+        sqlc.narg('company')::text IS NULL
+        OR j."Company" ILIKE '%' || sqlc.narg('company')::text || '%'
+    )
 ),
 jobs_scored AS (
     SELECT
@@ -459,6 +475,22 @@ UPDATE "PasswordResetTokens" SET "Used" = true WHERE "Id" = $1;
 
 -- name: UpdateUserPasswordByEmail :exec
 UPDATE "AspNetUsers" SET "PasswordHash" = $2 WHERE "Email" = $1;
+
+-- name: CreateEmailConfirmationToken :exec
+INSERT INTO "EmailConfirmationTokens" ("Email", "TokenHash", "ExpiresAt")
+VALUES ($1, $2, $3);
+
+-- name: GetEmailConfirmationTokenByHash :one
+SELECT "Id", "Email", "TokenHash", "ExpiresAt", "Used", "CreatedAt"
+FROM "EmailConfirmationTokens"
+WHERE "TokenHash" = $1
+LIMIT 1;
+
+-- name: MarkEmailConfirmationTokenAsUsed :exec
+UPDATE "EmailConfirmationTokens" SET "Used" = true WHERE "Id" = $1;
+
+-- name: ConfirmUserEmailByEmail :exec
+UPDATE "AspNetUsers" SET "EmailConfirmed" = true WHERE "Email" = $1;
 
 -- name: CreateApplication :exec
 INSERT INTO "Applications" ("UserId", "JobId", "Status", "Obs", "Platform", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt")

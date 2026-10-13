@@ -1093,6 +1093,22 @@ jobs_base AS (
         $7::text IS NULL
         OR j."Platform" = $7::text
     )
+    /*
+     * Filtros de texto (case-insensitive) aplicados AQUI, na mesma CTE onde
+     * o "platform" já é filtrado — ou seja, ANTES da comparação do cursor
+     * (que acontece em final_jobs). Assim a paginação por cursor continua
+     * estável: o cursor sempre percorre o MESMO conjunto filtrado.
+     *
+     * "stack" casa com o TÍTULO da vaga (o rótulo da UI é "Cargo ou Stack").
+     */
+    AND (
+        $8::text IS NULL
+        OR j."Title" ILIKE '%' || $8::text || '%'
+    )
+    AND (
+        $9::text IS NULL
+        OR j."Company" ILIKE '%' || $9::text || '%'
+    )
 ),
 jobs_scored AS (
     SELECT
@@ -1299,6 +1315,8 @@ type GetJobsParams struct {
 	CursorID         pgtype.UUID        `db:"cursor_id" json:"cursor_id"`
 	MinSimilarity    pgtype.Float8      `db:"min_similarity" json:"min_similarity"`
 	Platform         pgtype.Text        `db:"platform" json:"platform"`
+	Stack            pgtype.Text        `db:"stack" json:"stack"`
+	Company          pgtype.Text        `db:"company" json:"company"`
 }
 
 type GetJobsRow struct {
@@ -1338,6 +1356,8 @@ func (q *Queries) GetJobs(ctx context.Context, arg GetJobsParams) ([]GetJobsRow,
 		arg.CursorID,
 		arg.MinSimilarity,
 		arg.Platform,
+		arg.Stack,
+		arg.Company,
 	)
 	if err != nil {
 		return nil, err
