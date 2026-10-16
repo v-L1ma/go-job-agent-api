@@ -49,6 +49,19 @@ type AspNetUser struct {
 	PhoneNumberConfirmed bool               `db:"PhoneNumberConfirmed" json:"PhoneNumberConfirmed"`
 }
 
+type CvAnalysis struct {
+	Id             pgtype.UUID        `db:"Id" json:"Id"`
+	UserId         pgtype.UUID        `db:"UserId" json:"UserId"`
+	Score          int32              `db:"Score" json:"Score"`
+	JobTitle       pgtype.Text        `db:"JobTitle" json:"JobTitle"`
+	Result         string             `db:"Result" json:"Result"`
+	Active         bool               `db:"Active" json:"Active"`
+	CreatedBy      string             `db:"CreatedBy" json:"CreatedBy"`
+	CreatedAt      pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+	LastModifiedBy string             `db:"LastModifiedBy" json:"LastModifiedBy"`
+	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
+}
+
 type CvEvaluation struct {
 	Id             pgtype.UUID        `db:"Id" json:"Id"`
 	UserId         pgtype.UUID        `db:"UserId" json:"UserId"`

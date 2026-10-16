@@ -20,9 +20,10 @@ import (
 	"github.com/ledongthuc/pdf"
 )
 
-func parseRawResponse(rawResponse string) (dto.GeneratedCv, error) {
-	var data dto.GeneratedCv
-
+// stripJsonFences remove o envelope de markdown quando a IA responde o JSON
+// cercado por ``` (ou ```json). Mantido em um helper único para valer para
+// todas as respostas da IA (parseRawResponse e a análise de currículo).
+func stripJsonFences(rawResponse string) string {
 	cleaned := strings.TrimSpace(rawResponse)
 
 	if strings.HasPrefix(cleaned, "```") {
@@ -34,6 +35,14 @@ func parseRawResponse(rawResponse string) (dto.GeneratedCv, error) {
 		cleaned = strings.TrimSpace(cleaned)
 	}
 
+	return cleaned
+}
+
+func parseRawResponse(rawResponse string) (dto.GeneratedCv, error) {
+	var data dto.GeneratedCv
+
+	cleaned := stripJsonFences(rawResponse)
+
 	err := json.Unmarshal([]byte(cleaned), &data)
 	if err == nil {
 		return data, nil
@@ -41,16 +50,8 @@ func parseRawResponse(rawResponse string) (dto.GeneratedCv, error) {
 
 	cleaned = strings.ReplaceAll(rawResponse, `\n`, "\n")
 	cleaned = strings.ReplaceAll(cleaned, `\"`, `"`)
-	cleaned = strings.TrimSpace(cleaned)
 
-	if strings.HasPrefix(cleaned, "```") {
-		cleaned = strings.TrimPrefix(cleaned, "```json")
-		cleaned = strings.TrimPrefix(cleaned, "```")
-		if idx := strings.LastIndex(cleaned, "```"); idx >= 0 {
-			cleaned = cleaned[:idx]
-		}
-		cleaned = strings.TrimSpace(cleaned)
-	}
+	cleaned = stripJsonFences(cleaned)
 
 	err = json.Unmarshal([]byte(cleaned), &data)
 	return data, err
@@ -295,6 +296,17 @@ func GenerateCv(c *echo.Context, db *database.Database) error {
 	claims := c.Get("user").(*services.Claims)
 	var userId pgtype.UUID
 	if err := userId.Scan(claims.UserID); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	// Enforcement do limite diário de currículos do plano — ANTES de montar o
+	// prompt e chamar a IA, para não pagar o custo do Gemini em requisições
+	// que serão rejeitadas.
+	if err := services.CheckDailyCvLimit(c.Request().Context(), db.Query, userId); err != nil {
+		var limitErr *services.PlanLimitError
+		if errors.As(err, &limitErr) {
+			return c.JSON(http.StatusTooManyRequests, map[string]string{"error": limitErr.Error()})
+		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 

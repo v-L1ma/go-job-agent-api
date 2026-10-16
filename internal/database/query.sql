@@ -883,3 +883,23 @@ LEFT JOIN "AspNetUsers" u ON u."Id" = s."UserId"
 LEFT JOIN "Roles" r ON r."Id" = p."RoleId"
 WHERE s."UserId" = $1
 ORDER BY s."CreatedAt" DESC;
+
+-- name: SaveCvAnalysis :one
+INSERT INTO "CvAnalyses" ("UserId", "Score", "JobTitle", "Result", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt")
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+RETURNING "Id", "CreatedAt";
+
+-- name: GetCvAnalysesByUser :many
+SELECT "Id", "Score", "JobTitle", "Result", "CreatedAt"
+FROM "CvAnalyses"
+WHERE "UserId" = $1 AND "Active" = true
+ORDER BY "CreatedAt" DESC
+LIMIT 50;
+
+-- name: GetCvAnalysisById :one
+SELECT "Id", "UserId", "Score", "JobTitle", "Result", "CreatedAt"
+FROM "CvAnalyses"
+WHERE "Id" = $1 AND "UserId" = $2 AND "Active" = true;
+
+-- name: CountUserCvAnalysesSince :one
+SELECT COUNT(*)::int FROM "CvAnalyses" WHERE "UserId" = $1 AND "CreatedAt" >= $2;

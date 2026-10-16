@@ -53,6 +53,54 @@ func (q *Queries) ConfirmUserEmailByEmail(ctx context.Context, email pgtype.Text
 	return err
 }
 
+const countUserApplicationsSince = `-- name: CountUserApplicationsSince :one
+SELECT COUNT(*)::int FROM "Applications" WHERE "UserId" = $1 AND "CreatedAt" >= $2
+`
+
+type CountUserApplicationsSinceParams struct {
+	UserId    pgtype.UUID        `db:"UserId" json:"UserId"`
+	CreatedAt pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+}
+
+func (q *Queries) CountUserApplicationsSince(ctx context.Context, arg CountUserApplicationsSinceParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countUserApplicationsSince, arg.UserId, arg.CreatedAt)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const countUserCvAnalysesSince = `-- name: CountUserCvAnalysesSince :one
+SELECT COUNT(*)::int FROM "CvAnalyses" WHERE "UserId" = $1 AND "CreatedAt" >= $2
+`
+
+type CountUserCvAnalysesSinceParams struct {
+	UserId    pgtype.UUID        `db:"UserId" json:"UserId"`
+	CreatedAt pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+}
+
+func (q *Queries) CountUserCvAnalysesSince(ctx context.Context, arg CountUserCvAnalysesSinceParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countUserCvAnalysesSince, arg.UserId, arg.CreatedAt)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const countUserGeneratedCvsSince = `-- name: CountUserGeneratedCvsSince :one
+SELECT COUNT(*)::int FROM "GeneratedCvsNew" WHERE "UserId" = $1 AND "CreatedAt" >= $2
+`
+
+type CountUserGeneratedCvsSinceParams struct {
+	UserId    pgtype.UUID        `db:"UserId" json:"UserId"`
+	CreatedAt pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+}
+
+func (q *Queries) CountUserGeneratedCvsSince(ctx context.Context, arg CountUserGeneratedCvsSinceParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countUserGeneratedCvsSince, arg.UserId, arg.CreatedAt)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const createApplication = `-- name: CreateApplication :exec
 INSERT INTO "Applications" ("UserId", "JobId", "Status", "Obs", "Platform", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt")
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -877,6 +925,82 @@ func (q *Queries) GetApplicationsWithQuestions(ctx context.Context, userid pgtyp
 		return nil, err
 	}
 	return items, nil
+}
+
+const getCvAnalysesByUser = `-- name: GetCvAnalysesByUser :many
+SELECT "Id", "Score", "JobTitle", "Result", "CreatedAt"
+FROM "CvAnalyses"
+WHERE "UserId" = $1 AND "Active" = true
+ORDER BY "CreatedAt" DESC
+LIMIT 50
+`
+
+type GetCvAnalysesByUserRow struct {
+	Id        pgtype.UUID        `db:"Id" json:"Id"`
+	Score     int32              `db:"Score" json:"Score"`
+	JobTitle  pgtype.Text        `db:"JobTitle" json:"JobTitle"`
+	Result    string             `db:"Result" json:"Result"`
+	CreatedAt pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+}
+
+func (q *Queries) GetCvAnalysesByUser(ctx context.Context, userid pgtype.UUID) ([]GetCvAnalysesByUserRow, error) {
+	rows, err := q.db.Query(ctx, getCvAnalysesByUser, userid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetCvAnalysesByUserRow
+	for rows.Next() {
+		var i GetCvAnalysesByUserRow
+		if err := rows.Scan(
+			&i.Id,
+			&i.Score,
+			&i.JobTitle,
+			&i.Result,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getCvAnalysisById = `-- name: GetCvAnalysisById :one
+SELECT "Id", "UserId", "Score", "JobTitle", "Result", "CreatedAt"
+FROM "CvAnalyses"
+WHERE "Id" = $1 AND "UserId" = $2 AND "Active" = true
+`
+
+type GetCvAnalysisByIdParams struct {
+	Id     pgtype.UUID `db:"Id" json:"Id"`
+	UserId pgtype.UUID `db:"UserId" json:"UserId"`
+}
+
+type GetCvAnalysisByIdRow struct {
+	Id        pgtype.UUID        `db:"Id" json:"Id"`
+	UserId    pgtype.UUID        `db:"UserId" json:"UserId"`
+	Score     int32              `db:"Score" json:"Score"`
+	JobTitle  pgtype.Text        `db:"JobTitle" json:"JobTitle"`
+	Result    string             `db:"Result" json:"Result"`
+	CreatedAt pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+}
+
+func (q *Queries) GetCvAnalysisById(ctx context.Context, arg GetCvAnalysisByIdParams) (GetCvAnalysisByIdRow, error) {
+	row := q.db.QueryRow(ctx, getCvAnalysisById, arg.Id, arg.UserId)
+	var i GetCvAnalysisByIdRow
+	err := row.Scan(
+		&i.Id,
+		&i.UserId,
+		&i.Score,
+		&i.JobTitle,
+		&i.Result,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
 const getEmailConfirmationTokenByHash = `-- name: GetEmailConfirmationTokenByHash :one

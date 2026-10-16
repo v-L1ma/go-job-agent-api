@@ -84,6 +84,19 @@ func RegisterRoutes(e *echo.Echo, db *database.Database) {
 		return handlers.GetPlans(c, db)
 	})
 
+	// Análise de currículo para visitantes (sem JWT, sem persistência e com
+	// rate limit por IP) — precisa ficar fora do grupo `private`.
+	api.POST("/cv-analysis/public", func(c *echo.Context) error {
+		return handlers.AnalyzeCvPublic(c, db)
+	})
+
+	// PDF do currículo melhorado a partir da análise pública recém-gerada.
+	// Rate limit PRÓPIO (5/h por IP) para não esgotar o contador da análise
+	// em si — mesma regra de ficar fora do grupo `private`.
+	api.POST("/cv-analysis/public/improved-cv", func(c *echo.Context) error {
+		return handlers.GenerateImprovedCvPublic(c)
+	})
+
 	private := api.Group("")
 	private.Use(middlewares.JWTMiddleware)
 
@@ -116,40 +129,60 @@ func RegisterRoutes(e *echo.Echo, db *database.Database) {
 		return handlers.GetJobs(c, db)
 	})
 
-	private.GET("/jobs/:jobId", func(c *echo.Context) error{
+	private.GET("/jobs/:jobId", func(c *echo.Context) error {
 		return handlers.GetJobById(c, db)
 	})
 
-	private.POST("/jobs/:jobId/rate", func (c *echo.Context) error{
+	private.POST("/jobs/:jobId/rate", func(c *echo.Context) error {
 		return handlers.RateJob(c, db)
 	})
 
-	private.POST("/jobs/:jobId/cv", func (c *echo.Context) error{
+	private.POST("/jobs/:jobId/cv", func(c *echo.Context) error {
 		return handlers.GenerateCv(c, db)
 	})
 
-	private.POST("/preferences",func (c *echo.Context) error{
+	private.POST("/preferences", func(c *echo.Context) error {
 		return handlers.SetUserPreferences(c, db)
 	})
 
-	private.GET("/preferences", func (c *echo.Context) error{
+	private.GET("/preferences", func(c *echo.Context) error {
 		return handlers.GetUserPreferences(c, db)
 	})
 
-	private.POST("/cv", func (c *echo.Context) error{
+	private.POST("/cv", func(c *echo.Context) error {
 		return handlers.UploadCv(c, db)
 	})
 
-	private.GET("/cv", func (c *echo.Context) error{
+	private.GET("/cv", func(c *echo.Context) error {
 		return handlers.GetUserCv(c, db)
 	})
 
-	private.GET("/cv/:cvId", func (c *echo.Context) error{
+	private.GET("/cv/:cvId", func(c *echo.Context) error {
 		return handlers.GetCvById(c, db)
 	})
 
-	private.GET("/cv/generated", func (c *echo.Context) error{
+	private.GET("/cv/generated", func(c *echo.Context) error {
 		return handlers.GetGeneratedCvs(c, db)
+	})
+
+	// Análise de currículo (score 0-100 + melhorias) para usuário autenticado.
+	private.POST("/cv-analysis", func(c *echo.Context) error {
+		return handlers.AnalyzeCv(c, db)
+	})
+
+	// PDF do currículo melhorado com base nas dicas de uma análise que o
+	// cliente já possui (histórico local). Rota literal POST — não conflita
+	// com GET /cv-analysis/:analysisId (método e path distintos).
+	private.POST("/cv-analysis/improved-cv", func(c *echo.Context) error {
+		return handlers.GenerateImprovedCv(c)
+	})
+
+	private.GET("/cv-analysis", func(c *echo.Context) error {
+		return handlers.GetCvAnalyses(c, db)
+	})
+
+	private.GET("/cv-analysis/:analysisId", func(c *echo.Context) error {
+		return handlers.GetCvAnalysisById(c, db)
 	})
 
 	private.GET("/profile", func(c *echo.Context) error {
@@ -229,6 +262,10 @@ func RegisterRoutes(e *echo.Echo, db *database.Database) {
 
 	admin.GET("/plans", func(c *echo.Context) error {
 		return handlers.GetAdminPlans(c, db)
+	})
+
+	admin.PUT("/plans/:planId/limits", func(c *echo.Context) error {
+		return handlers.UpdatePlanLimits(c, db)
 	})
 
 	admin.GET("/subscriptions", func(c *echo.Context) error {

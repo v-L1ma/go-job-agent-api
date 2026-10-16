@@ -171,6 +171,42 @@ func GeneratePDF(cv dto.GeneratedCv) ([]byte, error) {
 	}
 
 	// ==========================
+	// SEÇÕES EXTRAS
+	// ==========================
+	// Tudo que não cabe nos campos fixos (Idiomas, Certificações, Projetos,
+	// Cursos, Prêmios etc.): vem de "SecoesExtras" para nenhum PDF perder
+	// seções do documento original. Título ou conteúdo vazio é pulado linha a
+	// linha; seção inteiramente vazia não é renderizada.
+
+	for _, secao := range cv.SecoesExtras {
+		titulo := strings.TrimSpace(secao.Titulo)
+		conteudo := strings.TrimSpace(secao.Conteudo)
+
+		if titulo == "" && conteudo == "" {
+			continue
+		}
+
+		if titulo != "" {
+			m.AddAutoRow(
+				text.NewCol(12, titulo, props.Text{
+					Size:  14,
+					Style: fontstyle.Bold,
+					Top:   8,
+				}),
+			)
+		}
+
+		if conteudo != "" {
+			m.AddAutoRow(
+				text.NewCol(12, conteudo, props.Text{
+					Size: 11,
+					Top:  2,
+				}),
+			)
+		}
+	}
+
+	// ==========================
 	// FOOTER
 	// ==========================
 

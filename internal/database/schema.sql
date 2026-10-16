@@ -339,4 +339,23 @@ CREATE TABLE public."Plans" (
   "UpdatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
 ) TABLESPACE pg_default;
 
+-- Análises de currículo (score 0-100 + melhorias) geradas por IA.
+-- "Result" guarda o JSON completo do objeto "analysis"; "Score"/"JobTitle"
+-- são projeções usadas na listagem sem precisar desserializar o JSON.
+CREATE TABLE IF NOT EXISTS public."CvAnalyses" (
+  "Id" uuid not null default gen_random_uuid(),
+  "UserId" uuid not null,
+  "Score" integer not null,
+  "JobTitle" text null,
+  "Result" text not null,
+  "Active" boolean not null default true,
+  "CreatedBy" text not null,
+  "CreatedAt" timestamp with time zone not null,
+  "LastModifiedBy" text not null,
+  "LastModifiedAt" timestamp with time zone not null,
+  constraint PK_CvAnalyses primary key ("Id")
+);
+
+create index IF not exists "IX_CvAnalyses_UserId_CreatedAt" on public."CvAnalyses" using btree ("UserId", "CreatedAt" DESC);
+
 CREATE EXTENSION IF NOT EXISTS unaccent;
