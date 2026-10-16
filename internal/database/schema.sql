@@ -335,6 +335,8 @@ CREATE TABLE public."Plans" (
   "Price" integer NOT NULL,
   "RoleId" UUID NOT NULL,
   "Active" BOOLEAN NOT NULL DEFAULT TRUE,
+  "DailyCvLimit" integer NULL,
+  "DailyApplicationLimit" integer NULL,
   "CreatedAt" TIMESTAMP NOT NULL DEFAULT NOW(),
   "UpdatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
 ) TABLESPACE pg_default;

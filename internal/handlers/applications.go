@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"job-agent-api/internal/database"
 	"job-agent-api/internal/dto"
 	"job-agent-api/internal/helpers"
@@ -99,6 +100,15 @@ func ApplyToJob(c *echo.Context, db *database.Database) error {
 
 	var jobID pgtype.UUID
 	if err := jobID.Scan(req.JobId); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	// Enforcement do limite diário de candidaturas do plano — antes do INSERT.
+	if err := services.CheckDailyApplicationLimit(c.Request().Context(), db.Query, userID); err != nil {
+		var limitErr *services.PlanLimitError
+		if errors.As(err, &limitErr) {
+			return c.JSON(http.StatusTooManyRequests, map[string]string{"error": limitErr.Error()})
+		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 

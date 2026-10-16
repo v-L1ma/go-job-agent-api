@@ -42,16 +42,28 @@ func MapPublicPlanResponse(plan sqlc.GetPlansRow) PublicPlanResponse {
 
 // PlanResponse representa um plano para o painel admin (camelCase).
 // O banco guarda o preço em centavos (int); aqui ele é emitido em reais (float).
+// Os limites diários são nullable no banco: nil = ilimitado.
 type PlanResponse struct {
-	Id            string  `json:"id"`
-	Name          string  `json:"name"`
-	StripePriceId string  `json:"stripePriceId"`
-	Description   string  `json:"description"`
-	Price         float64 `json:"price"`
-	RoleId        string  `json:"roleId"`
-	Active        bool    `json:"active"`
-	CreatedAt     string  `json:"createdAt"`
-	UpdatedAt     string  `json:"updatedAt"`
+	Id                    string  `json:"id"`
+	Name                  string  `json:"name"`
+	StripePriceId         string  `json:"stripePriceId"`
+	Description           string  `json:"description"`
+	Price                 float64 `json:"price"`
+	RoleId                string  `json:"roleId"`
+	Active                bool    `json:"active"`
+	DailyCvLimit          *int32  `json:"dailyCvLimit"`
+	DailyApplicationLimit *int32  `json:"dailyApplicationLimit"`
+	CreatedAt             string  `json:"createdAt"`
+	UpdatedAt             string  `json:"updatedAt"`
+}
+
+// int4ToPtr converte um pgtype.Int4 nullable para *int32 (nil = NULL no banco).
+func int4ToPtr(v pgtype.Int4) *int32 {
+	if !v.Valid {
+		return nil
+	}
+	value := v.Int32
+	return &value
 }
 
 // MapPlanResponse converte a linha do sqlc para o DTO admin, com o preço
@@ -59,32 +71,53 @@ type PlanResponse struct {
 // em centavos).
 func MapPlanResponse(plan sqlc.GetAllPlansRow) PlanResponse {
 	return PlanResponse{
-		Id:            plan.Id.String(),
-		Name:          plan.Name,
-		StripePriceId: plan.StripePriceID.String,
-		Description:   plan.Description.String,
-		Price:         CentsToBRL(plan.Price),
-		RoleId:        plan.RoleId.String(),
-		Active:        plan.Active,
-		CreatedAt:     timestampToRFC3339(plan.CreatedAt),
-		UpdatedAt:     timestampToRFC3339(plan.UpdatedAt),
+		Id:                    plan.Id.String(),
+		Name:                  plan.Name,
+		StripePriceId:         plan.StripePriceID.String,
+		Description:           plan.Description.String,
+		Price:                 CentsToBRL(plan.Price),
+		RoleId:                plan.RoleId.String(),
+		Active:                plan.Active,
+		DailyCvLimit:          int4ToPtr(plan.DailyCvLimit),
+		DailyApplicationLimit: int4ToPtr(plan.DailyApplicationLimit),
+		CreatedAt:             timestampToRFC3339(plan.CreatedAt),
+		UpdatedAt:             timestampToRFC3339(plan.UpdatedAt),
 	}
 }
 
 // MapPlanResponseFromGetPlanById converte a linha de GetPlanById para o
 // MESMO shape JSON de PlanResponse (id, name, description, stripePriceId,
-// price, roleId, active, createdAt, updatedAt), com o preço convertido de
-// centavos para reais. Usado pelo detalhe de assinatura do admin.
+// price, roleId, active, dailyCvLimit, dailyApplicationLimit, createdAt,
+// updatedAt), com o preço convertido de centavos para reais. Usado pelo
+// detalhe de assinatura do admin.
 func MapPlanResponseFromGetPlanById(plan sqlc.GetPlanByIdRow) PlanResponse {
 	return PlanResponse{
-		Id:            plan.Id.String(),
-		Name:          plan.Name,
-		StripePriceId: plan.StripePriceID.String,
-		Description:   plan.Description.String,
-		Price:         CentsToBRL(plan.Price),
-		RoleId:        plan.RoleId.String(),
-		Active:        plan.Active,
-		CreatedAt:     timestampToRFC3339(plan.CreatedAt),
-		UpdatedAt:     timestampToRFC3339(plan.UpdatedAt),
+		Id:                    plan.Id.String(),
+		Name:                  plan.Name,
+		StripePriceId:         plan.StripePriceID.String,
+		Description:           plan.Description.String,
+		Price:                 CentsToBRL(plan.Price),
+		RoleId:                plan.RoleId.String(),
+		Active:                plan.Active,
+		DailyCvLimit:          int4ToPtr(plan.DailyCvLimit),
+		DailyApplicationLimit: int4ToPtr(plan.DailyApplicationLimit),
+		CreatedAt:             timestampToRFC3339(plan.CreatedAt),
+		UpdatedAt:             timestampToRFC3339(plan.UpdatedAt),
+	}
+}
+
+// PlanLimits representa os limites diários de um plano no admin.
+// Campos sempre emitidos (sem omitempty): nil = ilimitado → JSON null.
+type PlanLimits struct {
+	DailyCvLimit          *int32 `json:"dailyCvLimit"`
+	DailyApplicationLimit *int32 `json:"dailyApplicationLimit"`
+}
+
+// NewPlanLimits monta o payload de limites a partir dos valores nullable do
+// banco (pgtype.Int4).
+func NewPlanLimits(cvLimit, applicationLimit pgtype.Int4) PlanLimits {
+	return PlanLimits{
+		DailyCvLimit:          int4ToPtr(cvLimit),
+		DailyApplicationLimit: int4ToPtr(applicationLimit),
 	}
 }

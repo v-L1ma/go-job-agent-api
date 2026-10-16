@@ -839,7 +839,7 @@ FROM "Plans"
 WHERE "StripeProduct_id" = $1;
 
 -- name: GetPlanById :one
-SELECT "Id", "Name", "Description", "Price", "StripePrice_id", "RoleId", "Active", "CreatedAt", "UpdatedAt"
+SELECT "Id", "Name", "Description", "Price", "StripePrice_id", "RoleId", "Active", "DailyCvLimit", "DailyApplicationLimit", "CreatedAt", "UpdatedAt"
 FROM "Plans"
 WHERE "Id" = $1;
 
@@ -863,9 +863,20 @@ JOIN "Roles" r ON r."Id" = p."RoleId"
 WHERE p."StripePrice_id" = $1;
 
 -- name: GetAllPlans :many
-SELECT "Id", "Name", "Description", "Price", "StripePrice_id", "StripeProduct_id", "RoleId", "Active", "CreatedAt", "UpdatedAt"
+SELECT "Id", "Name", "Description", "Price", "StripePrice_id", "StripeProduct_id", "RoleId", "Active", "DailyCvLimit", "DailyApplicationLimit", "CreatedAt", "UpdatedAt"
 FROM "Plans"
 ORDER BY "CreatedAt" DESC;
+
+-- name: UpdatePlanLimits :execrows
+UPDATE "Plans"
+SET "DailyCvLimit" = $2, "DailyApplicationLimit" = $3, "UpdatedAt" = now()
+WHERE "Id" = $1;
+
+-- name: CountUserGeneratedCvsSince :one
+SELECT COUNT(*)::int FROM "GeneratedCvsNew" WHERE "UserId" = $1 AND "CreatedAt" >= $2;
+
+-- name: CountUserApplicationsSince :one
+SELECT COUNT(*)::int FROM "Applications" WHERE "UserId" = $1 AND "CreatedAt" >= $2;
 
 -- name: GetSubscriptions :many
 SELECT s."Id", u."Email" AS "UserEmail", s."PlanId", s."StripeCustomer_id", s."StripeSubscription_id", s."StripeCheckoutSession_id", s."StripePrice_id", s."Status", s."CurrentPeriodStart", s."CurrentPeriodEnd", s."CancelAtPeriodEnd", s."CanceledAt", s."CreatedAt", s."UpdatedAt", p."Name" AS "PlanName", r."Name" AS "PlanRoleName"

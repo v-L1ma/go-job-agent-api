@@ -767,22 +767,24 @@ func (q *Queries) FindUserPreferences(ctx context.Context, userid pgtype.UUID) (
 }
 
 const getAllPlans = `-- name: GetAllPlans :many
-SELECT "Id", "Name", "Description", "Price", "StripePrice_id", "StripeProduct_id", "RoleId", "Active", "CreatedAt", "UpdatedAt"
+SELECT "Id", "Name", "Description", "Price", "StripePrice_id", "StripeProduct_id", "RoleId", "Active", "DailyCvLimit", "DailyApplicationLimit", "CreatedAt", "UpdatedAt"
 FROM "Plans"
 ORDER BY "CreatedAt" DESC
 `
 
 type GetAllPlansRow struct {
-	Id              pgtype.UUID      `db:"Id" json:"Id"`
-	Name            string           `db:"Name" json:"Name"`
-	Description     pgtype.Text      `db:"Description" json:"Description"`
-	Price           int32            `db:"Price" json:"Price"`
-	StripePriceID   pgtype.Text      `db:"StripePrice_id" json:"StripePrice_id"`
-	StripeProductID string           `db:"StripeProduct_id" json:"StripeProduct_id"`
-	RoleId          pgtype.UUID      `db:"RoleId" json:"RoleId"`
-	Active          bool             `db:"Active" json:"Active"`
-	CreatedAt       pgtype.Timestamp `db:"CreatedAt" json:"CreatedAt"`
-	UpdatedAt       pgtype.Timestamp `db:"UpdatedAt" json:"UpdatedAt"`
+	Id                    pgtype.UUID      `db:"Id" json:"Id"`
+	Name                  string           `db:"Name" json:"Name"`
+	Description           pgtype.Text      `db:"Description" json:"Description"`
+	Price                 int32            `db:"Price" json:"Price"`
+	StripePriceID         pgtype.Text      `db:"StripePrice_id" json:"StripePrice_id"`
+	StripeProductID       string           `db:"StripeProduct_id" json:"StripeProduct_id"`
+	RoleId                pgtype.UUID      `db:"RoleId" json:"RoleId"`
+	Active                bool             `db:"Active" json:"Active"`
+	DailyCvLimit          pgtype.Int4      `db:"DailyCvLimit" json:"DailyCvLimit"`
+	DailyApplicationLimit pgtype.Int4      `db:"DailyApplicationLimit" json:"DailyApplicationLimit"`
+	CreatedAt             pgtype.Timestamp `db:"CreatedAt" json:"CreatedAt"`
+	UpdatedAt             pgtype.Timestamp `db:"UpdatedAt" json:"UpdatedAt"`
 }
 
 func (q *Queries) GetAllPlans(ctx context.Context) ([]GetAllPlansRow, error) {
@@ -803,6 +805,8 @@ func (q *Queries) GetAllPlans(ctx context.Context) ([]GetAllPlansRow, error) {
 			&i.StripeProductID,
 			&i.RoleId,
 			&i.Active,
+			&i.DailyCvLimit,
+			&i.DailyApplicationLimit,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -1631,21 +1635,23 @@ func (q *Queries) GetPasswordResetTokenByHash(ctx context.Context, tokenhash str
 }
 
 const getPlanById = `-- name: GetPlanById :one
-SELECT "Id", "Name", "Description", "Price", "StripePrice_id", "RoleId", "Active", "CreatedAt", "UpdatedAt"
+SELECT "Id", "Name", "Description", "Price", "StripePrice_id", "RoleId", "Active", "DailyCvLimit", "DailyApplicationLimit", "CreatedAt", "UpdatedAt"
 FROM "Plans"
 WHERE "Id" = $1
 `
 
 type GetPlanByIdRow struct {
-	Id            pgtype.UUID      `db:"Id" json:"Id"`
-	Name          string           `db:"Name" json:"Name"`
-	Description   pgtype.Text      `db:"Description" json:"Description"`
-	Price         int32            `db:"Price" json:"Price"`
-	StripePriceID pgtype.Text      `db:"StripePrice_id" json:"StripePrice_id"`
-	RoleId        pgtype.UUID      `db:"RoleId" json:"RoleId"`
-	Active        bool             `db:"Active" json:"Active"`
-	CreatedAt     pgtype.Timestamp `db:"CreatedAt" json:"CreatedAt"`
-	UpdatedAt     pgtype.Timestamp `db:"UpdatedAt" json:"UpdatedAt"`
+	Id                    pgtype.UUID      `db:"Id" json:"Id"`
+	Name                  string           `db:"Name" json:"Name"`
+	Description           pgtype.Text      `db:"Description" json:"Description"`
+	Price                 int32            `db:"Price" json:"Price"`
+	StripePriceID         pgtype.Text      `db:"StripePrice_id" json:"StripePrice_id"`
+	RoleId                pgtype.UUID      `db:"RoleId" json:"RoleId"`
+	Active                bool             `db:"Active" json:"Active"`
+	DailyCvLimit          pgtype.Int4      `db:"DailyCvLimit" json:"DailyCvLimit"`
+	DailyApplicationLimit pgtype.Int4      `db:"DailyApplicationLimit" json:"DailyApplicationLimit"`
+	CreatedAt             pgtype.Timestamp `db:"CreatedAt" json:"CreatedAt"`
+	UpdatedAt             pgtype.Timestamp `db:"UpdatedAt" json:"UpdatedAt"`
 }
 
 func (q *Queries) GetPlanById(ctx context.Context, id pgtype.UUID) (GetPlanByIdRow, error) {
@@ -1659,6 +1665,8 @@ func (q *Queries) GetPlanById(ctx context.Context, id pgtype.UUID) (GetPlanByIdR
 		&i.StripePriceID,
 		&i.RoleId,
 		&i.Active,
+		&i.DailyCvLimit,
+		&i.DailyApplicationLimit,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -2713,6 +2721,46 @@ func (q *Queries) RemoveRoleFromUser(ctx context.Context, arg RemoveRoleFromUser
 	return err
 }
 
+const saveCvAnalysis = `-- name: SaveCvAnalysis :one
+INSERT INTO "CvAnalyses" ("UserId", "Score", "JobTitle", "Result", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt")
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+RETURNING "Id", "CreatedAt"
+`
+
+type SaveCvAnalysisParams struct {
+	UserId         pgtype.UUID        `db:"UserId" json:"UserId"`
+	Score          int32              `db:"Score" json:"Score"`
+	JobTitle       pgtype.Text        `db:"JobTitle" json:"JobTitle"`
+	Result         string             `db:"Result" json:"Result"`
+	Active         bool               `db:"Active" json:"Active"`
+	CreatedBy      string             `db:"CreatedBy" json:"CreatedBy"`
+	CreatedAt      pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+	LastModifiedBy string             `db:"LastModifiedBy" json:"LastModifiedBy"`
+	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
+}
+
+type SaveCvAnalysisRow struct {
+	Id        pgtype.UUID        `db:"Id" json:"Id"`
+	CreatedAt pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+}
+
+func (q *Queries) SaveCvAnalysis(ctx context.Context, arg SaveCvAnalysisParams) (SaveCvAnalysisRow, error) {
+	row := q.db.QueryRow(ctx, saveCvAnalysis,
+		arg.UserId,
+		arg.Score,
+		arg.JobTitle,
+		arg.Result,
+		arg.Active,
+		arg.CreatedBy,
+		arg.CreatedAt,
+		arg.LastModifiedBy,
+		arg.LastModifiedAt,
+	)
+	var i SaveCvAnalysisRow
+	err := row.Scan(&i.Id, &i.CreatedAt)
+	return i, err
+}
+
 const saveGeneratedCV = `-- name: SaveGeneratedCV :exec
 INSERT INTO "GeneratedCvsNew" ("UserId", "JobId", "FileName", "ExtractedText", "Active", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt") 
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -2843,6 +2891,26 @@ func (q *Queries) UpdatePlan(ctx context.Context, arg UpdatePlanParams) error {
 		arg.Active,
 	)
 	return err
+}
+
+const updatePlanLimits = `-- name: UpdatePlanLimits :execrows
+UPDATE "Plans"
+SET "DailyCvLimit" = $2, "DailyApplicationLimit" = $3, "UpdatedAt" = now()
+WHERE "Id" = $1
+`
+
+type UpdatePlanLimitsParams struct {
+	Id                    pgtype.UUID `db:"Id" json:"Id"`
+	DailyCvLimit          pgtype.Int4 `db:"DailyCvLimit" json:"DailyCvLimit"`
+	DailyApplicationLimit pgtype.Int4 `db:"DailyApplicationLimit" json:"DailyApplicationLimit"`
+}
+
+func (q *Queries) UpdatePlanLimits(ctx context.Context, arg UpdatePlanLimitsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updatePlanLimits, arg.Id, arg.DailyCvLimit, arg.DailyApplicationLimit)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateQuestionAnswer = `-- name: UpdateQuestionAnswer :exec

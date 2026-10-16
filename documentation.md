@@ -30,6 +30,8 @@ O token JWT é obtido via `POST /login` ou `POST /register` e expira em **15 hor
 | POST | `/reset-password` | Executar reset de senha com o token do e-mail |
 | GET | `/plans` | Listar planos de assinatura |
 | POST | `/webhook/stripe` | Webhook do Stripe (validado por `Stripe-Signature`) |
+| POST | `/cv-analysis/public` | Análise de currículo por IA (score + melhorias) — teste público, sem persistência, rate limit de 5/h por IP |
+| POST | `/cv-analysis/public/improved-cv` | PDF do currículo melhorado a partir da análise pública — sem persistência, rate limit próprio de 5/h por IP |
 
 ### Privadas (requerem JWT)
 
@@ -38,17 +40,21 @@ O token JWT é obtido via `POST /login` ou `POST /register` e expira em **15 hor
 | GET | `/jobs` | Listar vagas (paginação por cursor + filtros) |
 | GET | `/jobs/:jobId` | Detalhes de uma vaga |
 | POST | `/jobs/:jobId/rate` | Avaliar uma vaga |
-| POST | `/jobs/:jobId/cv` | Gerar currículo personalizado para a vaga |
+| POST | `/jobs/:jobId/cv` | Gerar currículo personalizado para a vaga (`429` ao atingir o limite diário do plano) |
 | GET | `/questions` | Listar perguntas respondidas pelo usuário |
 | POST | `/questions` | Responder perguntas de uma vaga (IA) |
 | PUT | `/questions/:questionId` | Editar a resposta de uma pergunta |
-| POST | `/applications` | Candidatar-se a uma vaga |
+| POST | `/applications` | Candidatar-se a uma vaga (`429` ao atingir o limite diário do plano) |
 | GET | `/applications` | Listar candidaturas (com perguntas) |
 | POST | `/applications/:applicationId/rate` | Avaliar uma candidatura |
 | POST | `/cv` | Upload de currículo (PDF) |
 | GET | `/cv` | Baixar currículo do usuário (PDF) |
 | GET | `/cv/generated` | Listar currículos gerados |
 | GET | `/cv/:cvId` | Baixar currículo gerado por ID (PDF) |
+| POST | `/cv-analysis` | Analisar currículo com IA (`429` ao atingir o limite diário do plano) — persiste no histórico |
+| POST | `/cv-analysis/improved-cv` | PDF do currículo melhorado a partir de uma análise já obtida (sem persistência) |
+| GET | `/cv-analysis` | Histórico de análises do usuário (máx. 50, `createdAt` desc) |
+| GET | `/cv-analysis/:analysisId` | Detalhe de uma análise do usuário (`404` se não existir ou for de outro usuário) |
 | GET | `/profile` | Obter perfil do usuário |
 | PUT | `/profile` | Atualizar perfil |
 | POST | `/preferences` | Criar/atualizar preferências |
@@ -75,6 +81,7 @@ O token JWT é obtido via `POST /login` ou `POST /register` e expira em **15 hor
 | GET | `/admin/scrapper/jobs/:executionId` | Vagas de uma execução do scraper |
 | GET | `/admin/search-queries` | Listar search queries |
 | GET | `/admin/plans` | Listar todos os planos de assinatura (ativos e inativos) |
+| PUT | `/admin/plans/:planId/limits` | Atualizar os limites diários de um plano (currículos e candidaturas) |
 | GET | `/admin/subscriptions` | Listar todas as assinaturas |
 | GET | `/admin/subscriptions/:subscriptionId` | Detalhe de uma assinatura (assinatura + plano + usuário + faturas) |
 | GET | `/admin/users/:userId/subscriptions` | Histórico de assinaturas de um usuário |
@@ -410,6 +417,333 @@ Validações:
 
 ---
 
+### POST `/cv-analysis/public`
+
+Avalia um currículo (PDF) com IA e devolve um **score de 0 a 100**, parecer,
+categorias, pontos fortes e melhorias acionáveis.
+
+Rota **pública** (sem JWT), feita para teste de visitantes:
+
+- **não persiste nada** (nenhum registro é criado);
+- aplica **rate limit de 5 requisições por hora por IP** (janela deslizante,
+  identificação via `c.RealIP()`);
+- **não** passa pelo limite diário do plano (isso vale só para a rota
+  privada `POST /cv-analysis`).
+
+**Request:** `multipart/form-data`
+
+| Campo | Tipo | Obrigatório | Restrições |
+|-------|------|-------------|-----------|
+| `cv` | file | Sim | Apenas `application/pdf`, até **10MB** |
+| `jobTitle` | string | Não\* | Máximo de **200** caracteres |
+| `jobDescription` | string | Não\* | Máximo de **10000** caracteres |
+
+\* `jobTitle` e `jobDescription` andam **juntos**: enviado um deles, o outro
+torna-se obrigatório. Sem vaga informada, o objeto `job` vem `null`; com
+vaga, as melhorias passam a considerar o contexto da vaga.
+
+**Response `200 OK`:**
+```json
+{
+  "data": {
+    "score": 78,
+    "summary": "Currículo bem estruturado, com resultados claros, mas sem detalhes de liderança.",
+    "categories": [
+      { "name": "Estrutura e formatação", "score": 90, "comment": "Layout limpo e fácil de ler." },
+      { "name": "Conteúdo e impacto", "score": 75, "comment": "Resultados quantitativos presentes." },
+      { "name": "Clareza e objetividade", "score": 95, "comment": "Texto direto e objetivo." },
+      { "name": "Palavras-chave", "score": 70, "comment": "Faltam termos específicos da vaga." }
+    ],
+    "strengths": [
+      { "area": "experiencias", "text": "Experiência sólida com Go e Kubernetes" },
+      { "area": "experiencias", "text": "Métricas quantitativas nas experiências" }
+    ],
+    "improvements": [
+      {
+        "area": "experiencias",
+        "severity": "alta",
+        "problem": "As descrições focam em implementação, sem mencionar decisões técnicas.",
+        "suggestion": "Descrever participações no desenho da arquitetura e decisões tomadas."
+      },
+      {
+        "area": "skills",
+        "severity": "media",
+        "problem": "Ferramentas de observabilidade não estão na lista de skills.",
+        "suggestion": "Incluir Prometheus/Grafana caso tenha experiência."
+      }
+    ],
+    "job": null,
+    "cv": {
+      "Nome": "João da Silva",
+      "Email": "joao@email.com",
+      "Telefone": "(11) 99999-9999",
+      "Linkedin": "https://linkedin.com/in/joao",
+      "Github": "https://github.com/joao",
+      "Resumo": "Desenvolvedor backend com 5 anos de experiência...",
+      "Skills": ["Go", "PostgreSQL", "Docker"],
+      "Experiencias": [
+        {
+          "Cargo": "Desenvolvedor Backend",
+          "Empresa": "Empresa XYZ",
+          "DataInicio": "2020-01",
+          "DataFim": "2023-12",
+          "Descricao": "Desenvolvimento de APIs..."
+        }
+      ],
+      "Educacao": [
+        {
+          "Curso": "Ciência da Computação",
+          "Instituicao": "Universidade XYZ",
+          "DataInicio": "2015-01",
+          "DataFim": "2019-12"
+        }
+      ],
+      "SecoesExtras": [
+        { "Titulo": "Idiomas", "Conteudo": "Inglês — Avançado\nEspanhol — Básico" },
+        { "Titulo": "Certificações", "Conteudo": "AWS Certified Solutions Architect — 2024" }
+      ]
+    }
+  }
+}
+```
+
+> Com vaga informada, `"job"` deixa de ser `null` e passa a:
+> ```json
+> {
+>   "title": "Dev Backend Pleno Go",
+>   "matchScore": 65,
+>   "missingSkills": ["AWS", "RabbitMQ"],
+>   "comment": "Base técnica adequada, mas faltam requisitos da vaga."
+> }
+> ```
+
+**Objeto `analysis`** (contrato comum às rotas pública e privada):
+
+| Campo | Tipo | Regras |
+|-------|------|--------|
+| `score` | int | `0`–`100` (clampado) |
+| `summary` | string | Parecer geral em 1 a 3 frases |
+| `categories` | array | **4 a 6** entradas `{ name, score (0–100), comment }` |
+| `strengths` | array | **2 a 5** entradas `{ area, text }` (sempre array, nunca `null`) |
+| `strengths[].area` | string | `estrutura` \| `contato` \| `resumo` \| `skills` \| `experiencias` \| `educacao` \| `geral` — seção do documento em que o viewer ancora/highlighta o ponto forte |
+| `improvements` | array | **3 a 8** entradas `{ area, severity, problem, suggestion }` |
+| `improvements[].area` | string | `estrutura` \| `contato` \| `resumo` \| `skills` \| `experiencias` \| `educacao` \| `geral` |
+| `improvements[].severity` | string | `alta` \| `media` \| `baixa` |
+| `job` | object \| null | `null` quando nenhuma vaga foi enviada; com vaga: `{ title, matchScore (0–100), missingSkills: string[], comment }` |
+| `cv` | object | Currículo estruturado no **mesmo shape PascalCase** de `GeneratedCv` (`Nome`, `Email`, `Telefone`, `Linkedin`, `Github`, `Resumo`, `Skills`, `Experiencias`, `Educacao`, `SecoesExtras`) — pronta para o viewer do frontend |
+| `cv.SecoesExtras` | array | Seções do documento que **não cabem nos campos fixos** (Idiomas, Certificações, Projetos, Cursos, Prêmios, Objetivos, Informações adicionais etc.): `{ Titulo, Conteudo }`, com `Titulo` = nome da seção como no documento e `Conteudo` = conteúdo integral (quebras de linha preservadas). Array vazio quando não há — **nunca `null`** |
+
+> **Transcrição completa:** o `cv` é uma transcrição **verbatim** do PDF — o
+> backend instrui explicitamente a IA a não resumir, abreviar, cortar,
+> parafrasear ou omitir nada (texto de `Resumo`/`Descricao` original, datas,
+> nomes de empresa/instituição e links completos). O que não couber nos campos
+> fixos vai para `SecoesExtras`, então nenhuma seção do documento se perde.
+> Compatível retro: análises antigas persistidas **sem** `SecoesExtras`
+> devolvem `[]`.
+
+> **Datas ignoradas em relação ao "hoje":** a análise **não avalia nem
+> pontua** anos "no futuro", datas "inconsistentes com a realidade atual" ou
+> cronologia frente à data de hoje (a IA não tem acesso à data atual), e
+> `improvements` exclusivamente sobre isso são **descartados na
+> normalização** — também em análises já persistidas, lidas via
+> `GET /cv-analysis/:analysisId`. Contradições **internas** de datas (fim
+> antes do início, mês impossível, períodos que se contradizem) continuam
+> sendo apontadas normalmente. O currículo melhorado também preserva as datas
+> exatamente como estão, sem "corrigir" anos.
+
+Todos os campos acima sempre vêm presentes (listas vazias em vez de `null`),
+mesmo quando a IA devolve menos entradas do que o mínimo — itens nunca são
+inventados.
+
+> **Compatibilidade:** análises antigas persistidas com `strengths` como
+> array de strings puras (formato legado `["forte1", "forte2"]`) são
+> **coeridas na leitura** para o formato atual: cada string vira
+> `{ "area": ..., "text": <string> }`, com `area` inferida por palavra-chave
+> do texto (ex.: "experiência" → `experiencias`) e fallback
+> `"geral"` quando não há match.
+
+**Response `400 Bad Request`:**
+```json
+{ "error": "Currículo não enviado: envie o arquivo PDF no campo \"cv\"." }
+```
+```json
+{ "error": "Tipo de arquivo inválido: envie um PDF (application/pdf)." }
+```
+```json
+{ "error": "Os campos jobTitle e jobDescription devem ser enviados juntos: informe o título e a descrição da vaga." }
+```
+```json
+{ "error": "O campo jobTitle deve ter no máximo 200 caracteres." }
+```
+```json
+{ "error": "O campo jobDescription deve ter no máximo 10000 caracteres." }
+```
+```json
+{ "error": "Erro ao abrir o PDF: envie um arquivo PDF válido." }
+```
+
+**Response `413 Payload Too Large`:**
+```json
+{ "error": "O arquivo excede o tamanho máximo permitido de 10MB." }
+```
+```json
+{ "error": "A requisição excede o tamanho máximo permitido de 10MB." }
+```
+
+**Response `429 Too Many Requests` (rate limit por IP):**
+```json
+{ "error": "Muitas tentativas. Tente novamente mais tarde." }
+```
+
+**Response `500 Internal Server Error`:**
+```json
+{ "error": "Erro ao gerar análise do currículo" }
+```
+```json
+{ "error": "Erro ao analisar resposta da IA: resposta da IA não é um JSON válido: ..." }
+```
+
+---
+
+### POST `/cv-analysis/public/improved-cv`
+
+Gera o **PDF de um currículo melhorado** a partir de uma análise que o cliente
+já possui — no fluxo público, a análise que veio do `POST /cv-analysis/public`.
+A IA reescreve o currículo aplicando as dicas de `improvements`, **sem inventar
+nada e sem cortar conteúdo**, e o resultado volta como download de PDF.
+
+Rota **pública** (sem JWT), com **rate limit próprio de 5 requisições por hora
+por IP** (limitador separado do da análise: esgotar um não bloqueia o outro).
+**Não persiste nada** e não passa pelo limite diário do plano.
+
+**Request:** `application/json`
+
+| Campo | Tipo | Obrigatório | Restrições |
+|-------|------|-------------|-----------|
+| `analysis` | object | Sim | Objeto `analysis` **completo** e no mesmo contrato da rota pública (o recebido no `data` da resposta do `POST /cv-analysis/public`) |
+| `analysis.cv` | object | Sim | Currículo estruturado (`cv`) da análise — é ele que vira o PDF. Objeto vazio (`{}`) também é rejeitado |
+
+```json
+{
+  "analysis": {
+    "score": 78,
+    "summary": "Currículo bem estruturado, mas sem detalhes de liderança.",
+    "categories": [
+      { "name": "Conteúdo e impacto", "score": 70, "comment": "Faltam resultados quantitativos." }
+    ],
+    "strengths": [
+      { "area": "experiencias", "text": "Experiência sólida com Go e Kubernetes" }
+    ],
+    "improvements": [
+      {
+        "area": "experiencias",
+        "severity": "alta",
+        "problem": "As descrições focam em implementação, sem mencionar decisões técnicas.",
+        "suggestion": "Descrever participações no desenho da arquitetura e decisões tomadas."
+      },
+      {
+        "area": "skills",
+        "severity": "media",
+        "problem": "Ferramentas de observabilidade não estão na lista de skills.",
+        "suggestion": "Incluir Prometheus/Grafana caso tenha experiência."
+      }
+    ],
+    "job": null,
+    "cv": {
+      "Nome": "João da Silva",
+      "Email": "joao@email.com",
+      "Telefone": "(11) 99999-9999",
+      "Linkedin": "https://linkedin.com/in/joao",
+      "Github": "https://github.com/joao",
+      "Resumo": "Desenvolvedor backend com 5 anos de experiência...",
+      "Skills": ["Go", "PostgreSQL", "Docker"],
+      "Experiencias": [
+        {
+          "Cargo": "Desenvolvedor Backend",
+          "Empresa": "Empresa XYZ",
+          "DataInicio": "2020-01",
+          "DataFim": "2023-12",
+          "Descricao": "Desenvolvimento de APIs..."
+        }
+      ],
+      "Educacao": [
+        {
+          "Curso": "Ciência da Computação",
+          "Instituicao": "Universidade XYZ",
+          "DataInicio": "2015-01",
+          "DataFim": "2019-12"
+        }
+      ],
+      "SecoesExtras": [
+        { "Titulo": "Idiomas", "Conteudo": "Inglês — Avançado\nEspanhol — Básico" }
+      ]
+    }
+  }
+}
+```
+
+Os campos `summary`, `categories` e `job` (quando presentes) entram no prompt
+apenas como **contexto**; `strengths` e `score` não afetam o resultado. O que
+volta ao cliente é somente o `cv` reescrito, aplicando as sugestões de
+`improvements`.
+
+**Response `200 OK`:** PDF binário.
+
+```
+Content-Type: application/pdf
+Content-Disposition: attachment; filename="curriculo-melhorado.pdf"
+```
+
+O corpo é o arquivo PDF gerado (mesmo motor das rotas `POST /jobs/:jobId/cv`,
+`GET /cv` e `GET /cv/:cvId`), com as seções de `cv.SecoesExtras` renderizadas
+após a Educação.
+
+**Response `400 Bad Request`:**
+```json
+{ "error": "Corpo da requisição vazio: envie um JSON no formato {\"analysis\": {...}}." }
+```
+```json
+{ "error": "Corpo da requisição inválido: envie um JSON no formato {\"analysis\": {...}}." }
+```
+```json
+{ "error": "Campo \"analysis\" ausente: envie a análise completa retornada por POST /cv-analysis (ou pela rota pública)." }
+```
+```json
+{ "error": "Campo \"analysis\" inválido: esperado um objeto JSON com a análise." }
+```
+```json
+{ "error": "Campo \"analysis.cv\" ausente: a análise precisa conter o currículo estruturado para gerar o PDF." }
+```
+```json
+{ "error": "Campo \"analysis.cv\" veio vazio: envie a análise com o currículo preenchido." }
+```
+
+**Response `413 Payload Too Large`:**
+```json
+{ "error": "A requisição excede o tamanho máximo permitido de 1MB." }
+```
+
+**Response `429 Too Many Requests` (rate limit por IP):**
+```json
+{ "error": "Muitas tentativas. Tente novamente mais tarde." }
+```
+
+**Response `500 Internal Server Error`:**
+```json
+{ "error": "Erro ao gerar o currículo melhorado" }
+```
+```json
+{ "error": "Erro ao analisar resposta da IA: resposta da IA não é um JSON válido: ..." }
+```
+```json
+{ "error": "A IA não devolveu um currículo válido para gerar o PDF" }
+```
+```json
+{ "error": "Erro ao gerar o PDF do currículo melhorado" }
+```
+
+---
+
 ## Rotas Privadas
 
 Todas as rotas abaixo exigem o header:
@@ -565,6 +899,19 @@ ou
 ```
 
 > O usuário deve ter feito upload de um currículo via `POST /cv` antes de usar esta rota.
+
+**Response `429 Too Many Requests`** — limite diário do plano atingido
+(ver [Limites diários por plano](#limites-diários-por-plano)):
+```json
+{
+  "error": "Você atingiu o limite diário de 5 currículos do seu plano. Tente novamente amanhã."
+}
+```
+
+> A verificação acontece **antes** da chamada à IA: requisições que excedem o
+> limite não consomem cota do Gemini. O limite é diário em UTC; `null` no
+> plano = ilimitado; `0` = sempre bloqueado. Usuários sem assinatura ativa
+> não têm limite.
 
 ---
 
@@ -729,6 +1076,18 @@ Candidata-se a uma vaga. O `jobId` vai no **body** (não há rota
 }
 ```
 
+**Response `429 Too Many Requests`** — limite diário do plano atingido
+(ver [Limites diários por plano](#limites-diários-por-plano)):
+```json
+{
+  "error": "Você atingiu o limite diário de 10 candidaturas do seu plano. Tente novamente amanhã."
+}
+```
+
+> A verificação acontece antes do INSERT da candidatura. O limite é diário em
+> UTC; `null` no plano = ilimitado; `0` = sempre bloqueado. Usuários sem
+> assinatura ativa não têm limite.
+
 ---
 
 ### GET `/applications`
@@ -847,10 +1206,16 @@ Faz upload de um currículo em PDF. O arquivo é extraído e analisado por IA.
         "DataInicio": "2015-01",
         "DataFim": "2019-12"
       }
-    ]
+    ],
+    "SecoesExtras": null
   }
 }
 ```
+
+> `response` é o shape completo `GeneratedCv`, que inclui `SecoesExtras`
+> (Idiomas, Certificações, Projetos etc.). Nesta rota o prompt de estruturação
+> **não** pede essas seções, então o campo vem `null` — trate-o como opcional.
+> Já nas rotas de análise ele vem sempre como array (`[]` quando vazio).
 
 **Response `400 Bad Request`:**
 ```json
@@ -1121,6 +1486,213 @@ Retorna estatísticas do dashboard do usuário.
   }
 }
 ```
+
+---
+
+### POST `/cv-analysis`
+
+Mesma análise da rota pública, mas para o usuário autenticado: aplica o
+**limite diário do plano** e **persiste** a análise em `CvAnalyses`
+(histórico consultável pelas rotas `GET` abaixo).
+
+A verificação do limite roda **antes** da chamada à IA (não consome cota do
+Gemini em requisições que serão rejeitadas). Ver
+[Limites diários por plano](#limites-diários-por-plano).
+
+**Headers:**
+```
+Authorization: Bearer <token>
+Content-Type: multipart/form-data
+```
+
+**Request:** `multipart/form-data` — mesmos campos da rota pública:
+
+| Campo | Tipo | Obrigatório | Restrições |
+|-------|------|-------------|-----------|
+| `cv` | file | Sim | Apenas `application/pdf`, até **10MB** |
+| `jobTitle` | string | Não\* | Máximo de **200** caracteres |
+| `jobDescription` | string | Não\* | Máximo de **10000** caracteres |
+
+\* Enviado um, o outro é obrigatório.
+
+**Response `200 OK`:** o objeto `analysis` completo **+** metadados de
+persistência (`id` e `createdAt` no mesmo nível dos demais campos):
+
+```json
+{
+  "data": {
+    "id": "79f36725-23c9-4979-b7b1-e8c6fc1984ac",
+    "createdAt": "2026-10-14T17:42:48Z",
+    "score": 75,
+    "summary": "Currículo bem estruturado e objetivo...",
+    "categories": [
+      { "name": "Estrutura e formatação", "score": 90, "comment": "Layout limpo." }
+    ],
+    "strengths": [
+      { "area": "experiencias", "text": "Experiência sólida com Go e Kubernetes" }
+    ],
+    "improvements": [
+      {
+        "area": "experiencias",
+        "severity": "alta",
+        "problem": "Descrições focadas em implementação.",
+        "suggestion": "Detalhar decisões de arquitetura."
+      }
+    ],
+    "job": {
+      "title": "Arquiteto de Software",
+      "matchScore": 65,
+      "missingSkills": ["Liderança técnica", "Observabilidade"],
+      "comment": "Base técnica adequada, perfil ainda executando."
+    },
+    "cv": { "Nome": "João da Silva", "Skills": ["Go", "Kubernetes"] }
+  }
+}
+```
+
+> `createdAt` é RFC3339 em UTC. Sem vaga informada, `"job": null` e a
+> resposta é idêntica à da rota pública, apenas com `id` e `createdAt`.
+
+| Código | Quando |
+|--------|--------|
+| `400` | Arquivo ausente, tipo inválido, PDF ilegível, campos de vaga incompletos/longos demais |
+| `401` | Token ausente, inválido ou expirado (middleware JWT) |
+| `413` | Arquivo/corpo acima de 10MB |
+| `429` | Limite diário do plano atingido (`{"error": "Você atingiu o limite diário de N análises de currículo do seu plano. Tente novamente amanhã."}`) |
+| `500` | Falha na IA ou resposta ilegível |
+
+---
+
+### GET `/cv-analysis`
+
+Lista o histórico de análises do usuário autenticado — **no máximo 50
+itens**, ordenado por `createdAt` **decrescente**.
+
+**Response `200 OK`:**
+```json
+{
+  "data": [
+    {
+      "id": "3abbb821-95d8-4ede-b235-3685ffb0616b",
+      "score": 84,
+      "summary": "Currículo objetivo e bem estruturado...",
+      "jobTitle": null,
+      "createdAt": "2026-10-14T17:43:07Z"
+    },
+    {
+      "id": "79f36725-23c9-4979-b7b1-e8c6fc1984ac",
+      "score": 75,
+      "summary": "Currículo bem estruturado e objetivo...",
+      "jobTitle": "Arquiteto de Software",
+      "createdAt": "2026-10-14T17:42:48Z"
+    }
+  ]
+}
+```
+
+- `jobTitle`: título da vaga quando a análise foi feita **com** vaga, senão `null`.
+- Sem análises, responde `{"data": []}` (a chave `data` **nunca** é omitida).
+
+**Response `401 Unauthorized`:** token ausente/inválido/expirado.
+
+---
+
+### GET `/cv-analysis/:analysisId`
+
+Retorna o detalhe de uma análise: `id`, `createdAt` e o objeto `analysis`
+completo (mesmo formato retornado pelo `POST`).
+
+**Path Parameter:**
+| Parâmetro | Tipo | Descrição |
+|-----------|------|-----------|
+| `analysisId` | UUID | ID da análise (obtido no `POST /cv-analysis` ou na lista) |
+
+**Response `200 OK`:**
+```json
+{
+  "data": {
+    "id": "79f36725-23c9-4979-b7b1-e8c6fc1984ac",
+    "createdAt": "2026-10-14T17:42:48Z",
+    "score": 75,
+    "summary": "...",
+    "categories": [],
+    "strengths": [],
+    "improvements": [],
+    "job": null,
+    "cv": { "Nome": "João da Silva" }
+  }
+}
+```
+
+> **Análises antigas:** o `Result` persistido é texto JSON lido e revalidado
+> contra o contrato atual na leitura. `strengths` gravado no formato legado
+> (`["forte1", "forte2"]`) é coerido para `[{ "area": ..., "text": ... }]`
+> — `area` inferida por palavra-chave do texto, com fallback `"geral"` —
+> então o cliente sempre recebe o formato `{ area, text }`.
+
+**Response `404 Not Found`:**
+```json
+{ "error": "Análise não encontrada" }
+```
+
+> A busca é filtrada pelo `userId` do JWT: uma análise que **não existe** e
+> uma análise que **pertence a outro usuário** retornam exatamente o mesmo
+> `404` (sem vazar a existência do recurso). ID com formato inválido também
+> responde `404`.
+
+**Response `401 Unauthorized`:** token ausente/inválido/expirado.
+
+---
+
+### POST `/cv-analysis/improved-cv`
+
+Gera o **PDF de um currículo melhorado** a partir de uma análise que o cliente
+já possui — normalmente a vinda do histórico (`GET /cv-analysis/:analysisId`)
+ou da resposta do `POST /cv-analysis`. A IA reescreve o currículo aplicando as
+sugestões de `improvements`, **sem inventar informações** (nada de empregos,
+datas, formações ou habilidades fictícias) e **sem resumir nem cortar** o
+conteúdo original: o objetivo é melhorar a redação preservando a completude.
+Os dados de contato ficam exatamente como estão.
+
+**Não persiste nada** (não cria registro nem consome cota de plano) — só
+transforma o corpo enviado em PDF. Espelha a rota pública
+`POST /cv-analysis/public/improved-cv`, com a diferença de exigir JWT e de
+**não ter rate limit por IP**.
+
+**Headers:**
+```
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+**Request:** `application/json` — mesmos campos da rota pública:
+
+| Campo | Tipo | Obrigatório | Restrições |
+|-------|------|-------------|-----------|
+| `analysis` | object | Sim | Objeto `analysis` **completo** no contrato documentado acima (o `data` devolvido pelo `GET /cv-analysis/:analysisId`) |
+| `analysis.cv` | object | Sim | Currículo estruturado da análise — é ele que vira o PDF (`{}` é rejeitado) |
+
+Exemplo de corpo: ver o objeto `analysis` do
+[POST `/cv-analysis`](#post-cv-analysis) (aceita o mesmo JSON, com ou sem os
+metadados `id`/`createdAt` — eles são ignorados).
+
+**Response `200 OK`:** PDF binário.
+
+```
+Content-Type: application/pdf
+Content-Disposition: attachment; filename="curriculo-melhorado.pdf"
+```
+
+| Código | Quando |
+|--------|--------|
+| `400` | JSON malformado, corpo vazio, `analysis` ausente/`null`, `analysis.cv` ausente ou vazio |
+| `401` | Token ausente, inválido ou expirado (middleware JWT) |
+| `413` | Corpo acima de **1MB** |
+| `500` | Falha na IA, resposta ilegível ou falha ao gerar o PDF |
+
+> **Contrato do PDF:** é o mesmo gerador de `POST /jobs/:jobId/cv` e `GET /cv`
+> — cabeçalho com nome + contato, Resumo, Skills, Experiência, Educação e,
+> por último, as seções de `cv.SecoesExtras` (título em negrito + conteúdo).
 
 ---
 
@@ -1680,6 +2252,58 @@ Stripe (ou via `stripe listen`) os eventos listados abaixo e um
 
 ---
 
+### Limites diários por plano
+
+Cada plano (`Plans`) pode definir dois limites diários, aplicados aos usuários
+com assinatura ativa (`active`, `trialing` ou `past_due`):
+
+| Campo (banco) | Campo (API admin) | Recurso limitado | Enforcement |
+|---|---|---|---|
+| `Plans."DailyCvLimit"` | `dailyCvLimit` | Currículos gerados por dia (`GeneratedCvsNew`) | `POST /jobs/:jobId/cv` → `429` |
+| `Plans."DailyCvLimit"` | `dailyCvLimit` | Análises de currículo por dia (`CvAnalyses`) | `POST /cv-analysis` → `429` |
+| `Plans."DailyApplicationLimit"` | `dailyApplicationLimit` | Candidaturas por dia (`Applications`) | `POST /applications` → `429` |
+
+> **Contadores independentes:** geração de currículo e análise de currículo
+> leem o **mesmo valor** de `DailyCvLimit`, mas contam em tabelas diferentes
+> (`GeneratedCvsNew` e `CvAnalyses`). Gerar 2 currículos não consome as 2
+> análises: são dois orçamentos diários separados com o mesmo teto.
+
+Semântica (igual para os dois campos):
+
+| Valor | Significado |
+|-------|-------------|
+| `null` | **Ilimitado** (comportamento padrão — colunas nascem `NULL`) |
+| `0` | Recurso **bloqueado** (toda tentativa retorna `429`) |
+| `> 0` | Máximo permitido por dia (janela **UTC**: meia-noite UTC → 23:59 UTC) |
+
+Regras de aplicação:
+
+- A janela de contagem é **diária em UTC** (não no fuso do usuário).
+- **Sem assinatura ativa = sem limite**: quem não tem assinatura, ou tem
+  status sem acesso (`canceled`, `unpaid`, `incomplete`, etc. — política de
+  `HasActiveAccess`), não é limitado.
+- A verificação roda **antes** do trabalho pesado: em `POST /jobs/:jobId/cv`
+  e em `POST /cv-analysis` antes da chamada à IA (não consome cota do Gemini)
+  e em `POST /applications` antes do INSERT.
+- Os limites são escritos **apenas** pelo endpoint admin
+  `PUT /admin/plans/:planId/limits`; os webhooks do Stripe não os alteram.
+
+Mensagem de bloqueio (o valor do limite é sempre incluído):
+```json
+{
+  "error": "Você atingiu o limite diário de 5 currículos do seu plano. Tente novamente amanhã."
+}
+```
+
+Em `POST /cv-analysis` a mensagem troca apenas a palavra do recurso:
+```json
+{
+  "error": "Você atingiu o limite diário de 5 análises de currículo do seu plano. Tente novamente amanhã."
+}
+```
+
+---
+
 ### Rotas admin de assinaturas
 
 Ambas exigem **JWT válido com role `Admin`** (retornam `401` sem token e `403` sem a role).
@@ -1687,6 +2311,7 @@ Ambas exigem **JWT válido com role `Admin`** (retornam `401` sem token e `403` 
 | Método | Rota | Descrição |
 |--------|------|-----------|
 | GET | `/admin/plans` | Lista **TODOS** os planos (ativos e inativos) com campos completos em `camelCase` |
+| PUT | `/admin/plans/:planId/limits` | Atualiza os **limites diários** de um plano (`dailyCvLimit` / `dailyApplicationLimit`) |
 | GET | `/admin/subscriptions` | Lista **todas** as assinaturas com e-mail do usuário (`userEmail`), nome do plano (`plan`) e nome do cargo (`roleName`) |
 | GET | `/admin/subscriptions/:subscriptionId` | Detalhe de **uma** assinatura: assinatura + plano + usuário + faturas |
 | GET | `/admin/users/:userId/subscriptions` | Histórico de assinaturas de **um** usuário (mais recente primeiro) |
@@ -1710,6 +2335,8 @@ Ambas exigem **JWT válido com role `Admin`** (retornam `401` sem token e `403` 
       "price": 49.9,
       "roleId": "a2238759-645f-4d7e-867e-1ccf3d86afef",
       "active": true,
+      "dailyCvLimit": 5,
+      "dailyApplicationLimit": 10,
       "createdAt": "2026-01-02T15:04:05Z",
       "updatedAt": "2026-01-02T15:04:05Z"
     }
@@ -1720,6 +2347,94 @@ Ambas exigem **JWT válido com role `Admin`** (retornam `401` sem token e `403` 
 > `price` é retornado **em reais (float)** — ex.: `49.9` = R$ 49,90. O banco
 > armazena centavos (inteiro, ex.: `4990`); a conversão centavos → reais
 > acontece somente na leitura (GET).
+>
+> `dailyCvLimit` e `dailyApplicationLimit` são os **limites diários** do plano
+> (inteiros >= 0 ou `null`). `null` = **ilimitado**; `0` = recurso bloqueado;
+> `> 0` = máximo permitido por dia (janela em UTC). Os campos existem desde a
+> migration `0001_plan_limits.sql` e são sempre emitidos (nunca omitidos).
+
+#### PUT `/admin/plans/:planId/limits`
+
+Atualiza os limites diários de um plano. **JWT + role `Admin`**.
+
+- Ambos os campos do body são **opcionais**:
+  - **ausente** → mantém o valor atual do plano;
+  - `null` → torna **ilimitado**;
+  - inteiro `>= 0` → novo limite (`0` = recurso bloqueado).
+- `Content-Type: application/json` (body vazio é tratado como `{}`, ou seja,
+  nenhuma alteração — responde `200` com os valores atuais).
+- Os limites **não** são sobrescritos pelos webhooks do Stripe (só esta rota
+  os escreve).
+
+**Path Parameter:**
+| Parâmetro | Tipo | Descrição |
+|-----------|------|-----------|
+| `planId` | UUID | ID do plano |
+
+**Request:**
+```json
+{
+  "dailyCvLimit": 5,
+  "dailyApplicationLimit": 10
+}
+```
+
+Somente um campo (o outro mantém o valor atual):
+```json
+{
+  "dailyCvLimit": null
+}
+```
+
+**Response `200 OK`** — `data` é **sempre** emitido, com `null` para ilimitado:
+```json
+{
+  "message": "Plan limits updated successfully",
+  "data": {
+    "dailyCvLimit": 5,
+    "dailyApplicationLimit": 10
+  }
+}
+```
+
+```json
+{
+  "message": "Plan limits updated successfully",
+  "data": {
+    "dailyCvLimit": null,
+    "dailyApplicationLimit": 10
+  }
+}
+```
+
+**Response `400 Bad Request`** — corpo inválido ou valor não inteiro/negativo:
+```json
+{
+  "error": "Invalid request body"
+}
+```
+```json
+{
+  "error": "dailyCvLimit deve ser um número inteiro maior ou igual a 0"
+}
+```
+> O mesmo formato de erro vale para `dailyApplicationLimit`. Valores aceitos:
+> inteiros `>= 0` (incluindo `0`) ou `null`. Rejeitados: negativos, fracionários
+> (ex.: `5.5`), strings, booleanos, arrays e números acima de `2147483647`.
+
+**Response `404 Not Found`** — plano inexistente (ou `planId` que não é UUID):
+```json
+{
+  "error": "Plan not found"
+}
+```
+
+**Response `500 Internal Server Error`:**
+```json
+{
+  "error": "..."
+}
+```
 
 #### GET `/admin/subscriptions`
 
@@ -1757,7 +2472,7 @@ Detalhe de uma assinatura para o painel admin. **Somente leitura** (os webhooks 
 
 O objeto `subscription` tem **exatamente o mesmo shape e os mesmos valores** do item correspondente em `GET /admin/subscriptions` (os 15 campos em `camelCase`).
 
-- `plan` — mesmo shape do `GET /admin/plans` (`id`, `name`, `description`, `stripePriceId`, `price`, `roleId`, `active`, `createdAt`, `updatedAt`), com `price` **em reais (float)**. Pode ser `null` (defensivo, se o plano não existir mais).
+- `plan` — mesmo shape do `GET /admin/plans` (`id`, `name`, `description`, `stripePriceId`, `price`, `roleId`, `active`, `dailyCvLimit`, `dailyApplicationLimit`, `createdAt`, `updatedAt`), com `price` **em reais (float)**. Pode ser `null` (defensivo, se o plano não existir mais).
 - `user` — apenas `id`, `name`, `email` e `role` (`email` é `""` quando `NULL` no banco). **Nunca expõe `passwordHash`** nem outros campos sensíveis. Pode ser `null` (defensivo; não deve ocorrer por causa da FK).
 - `invoices` — últimas **20** faturas da assinatura Stripe, ordenadas por `createdAt` **DESC**. Lista vazia → `[]` (nunca `null`/ausente).
   - `amountPaid` é emitido **em reais (float)**; `NULL` no banco (BIGINT) → `0` (nunca `null`).
@@ -1793,6 +2508,8 @@ O objeto `subscription` tem **exatamente o mesmo shape e os mesmos valores** do 
       "price": 49.9,
       "roleId": "a2238759-645f-4d7e-867e-1ccf3d86afef",
       "active": true,
+      "dailyCvLimit": 5,
+      "dailyApplicationLimit": 10,
       "createdAt": "2026-01-02T15:04:05Z",
       "updatedAt": "2026-01-02T15:04:05Z"
     },
@@ -1954,6 +2671,8 @@ type Emailer interface {
 | `404` | Not Found — recurso não encontrado |
 | `409` | Conflict — recurso duplicado (ex.: cargo com nome existente) |
 | `422` | Unprocessable Entity — plano sem preço Stripe configurado |
+| `413` | Payload Too Large — upload acima do limite (`POST /cv-analysis`, `POST /cv-analysis/public`, `POST /users/cv`: 10MB) ou corpo JSON acima de 1MB (`POST /cv-analysis/improved-cv`, `POST /cv-analysis/public/improved-cv`) |
+| `429` | Too Many Requests — limite diário do plano atingido (currículos em `POST /jobs/:jobId/cv`, análises em `POST /cv-analysis`, candidaturas em `POST /applications`) **ou** rate limit de 5/h por IP em `POST /cv-analysis/public` **e** no limitador próprio de `POST /cv-analysis/public/improved-cv` |
 | `500` | Internal Server Error — erro interno do servidor |
 
 ## Variáveis de Ambiente

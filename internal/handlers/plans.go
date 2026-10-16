@@ -1,10 +1,14 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
+	"math"
 	"net/http"
 	"time"
 
@@ -270,4 +274,114 @@ func UpdatePlan(c *echo.Context, db *database.Database, plan Plan) error {
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "Plan updated successfully"})
+}
+
+// updatePlanLimitsRequest usa json.RawMessage para distinguir três estados:
+// campo ausente (mantém o valor atual), null explícito (ilimitado) e número
+// inteiro >= 0 (novo limite; 0 = bloqueado).
+type updatePlanLimitsRequest struct {
+	DailyCvLimit          json.RawMessage `json:"dailyCvLimit"`
+	DailyApplicationLimit json.RawMessage `json:"dailyApplicationLimit"`
+}
+
+const limitFieldError = " deve ser um número inteiro maior ou igual a 0"
+
+// parseOptionalLimit decodifica um limite opcional do body.
+// present=false → campo ausente (manter valor atual); value=nil com
+// present=true → null (ilimitado); msg != "" → valor inválido (400).
+func parseOptionalLimit(raw json.RawMessage, field string) (value *int32, present bool, msg string) {
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return nil, false, ""
+	}
+
+	var v any
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return nil, true, field + limitFieldError
+	}
+
+	if v == nil {
+		return nil, true, "" // null = ilimitado
+	}
+
+	f, ok := v.(float64)
+	if !ok || f < 0 || f != math.Trunc(f) || f > math.MaxInt32 {
+		return nil, true, field + limitFieldError
+	}
+
+	n := int32(f)
+	return &n, true, ""
+}
+
+// UpdatePlanLimits atualiza os limites diários de um plano (admin).
+//
+// PUT /admin/plans/:planId/limits
+//
+// Body: ambos os campos são opcionais — ausente mantém o valor atual,
+// null torna ilimitado, inteiro >= 0 define o limite (0 = bloqueado).
+func UpdatePlanLimits(c *echo.Context, db *database.Database) error {
+	planId := c.Param("planId")
+	var planUUID pgtype.UUID
+	if err := planUUID.Scan(planId); err != nil {
+		// UUID malformado não corresponde a nenhum plano.
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "Plan not found"})
+	}
+
+	var req updatePlanLimitsRequest
+	// Body vazio (EOF) é tratado como "{}" (nenhum campo alterado).
+	if err := c.Bind(&req); err != nil && !errors.Is(err, io.EOF) {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+	}
+
+	newCvLimit, cvPresent, cvMsg := parseOptionalLimit(req.DailyCvLimit, "dailyCvLimit")
+	newAppLimit, appPresent, appMsg := parseOptionalLimit(req.DailyApplicationLimit, "dailyApplicationLimit")
+	if cvMsg != "" || appMsg != "" {
+		msg := cvMsg
+		if msg == "" {
+			msg = appMsg
+		}
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": msg})
+	}
+
+	existing, err := db.Query.GetPlanById(c.Request().Context(), planUUID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "Plan not found"})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	// Campos ausentes herdam o valor atual do plano.
+	dailyCvLimit := existing.DailyCvLimit
+	if cvPresent {
+		dailyCvLimit = pgtype.Int4{}
+		if newCvLimit != nil {
+			dailyCvLimit = pgtype.Int4{Int32: *newCvLimit, Valid: true}
+		}
+	}
+
+	dailyAppLimit := existing.DailyApplicationLimit
+	if appPresent {
+		dailyAppLimit = pgtype.Int4{}
+		if newAppLimit != nil {
+			dailyAppLimit = pgtype.Int4{Int32: *newAppLimit, Valid: true}
+		}
+	}
+
+	rows, err := db.Query.UpdatePlanLimits(c.Request().Context(), sqlc.UpdatePlanLimitsParams{
+		Id:                    planUUID,
+		DailyCvLimit:          dailyCvLimit,
+		DailyApplicationLimit: dailyAppLimit,
+	})
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+	if rows == 0 {
+		// Plano removido entre o SELECT e o UPDATE.
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "Plan not found"})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"message": "Plan limits updated successfully",
+		"data":    dto.NewPlanLimits(dailyCvLimit, dailyAppLimit),
+	})
 }

@@ -152,16 +152,18 @@ type PasswordResetToken struct {
 }
 
 type Plan struct {
-	Id              pgtype.UUID      `db:"Id" json:"Id"`
-	Name            string           `db:"Name" json:"Name"`
-	StripePriceID   pgtype.Text      `db:"StripePrice_id" json:"StripePrice_id"`
-	StripeProductID string           `db:"StripeProduct_id" json:"StripeProduct_id"`
-	Description     pgtype.Text      `db:"Description" json:"Description"`
-	Price           int32            `db:"Price" json:"Price"`
-	RoleId          pgtype.UUID      `db:"RoleId" json:"RoleId"`
-	Active          bool             `db:"Active" json:"Active"`
-	CreatedAt       pgtype.Timestamp `db:"CreatedAt" json:"CreatedAt"`
-	UpdatedAt       pgtype.Timestamp `db:"UpdatedAt" json:"UpdatedAt"`
+	Id                    pgtype.UUID      `db:"Id" json:"Id"`
+	Name                  string           `db:"Name" json:"Name"`
+	StripePriceID         pgtype.Text      `db:"StripePrice_id" json:"StripePrice_id"`
+	StripeProductID       string           `db:"StripeProduct_id" json:"StripeProduct_id"`
+	Description           pgtype.Text      `db:"Description" json:"Description"`
+	Price                 int32            `db:"Price" json:"Price"`
+	RoleId                pgtype.UUID      `db:"RoleId" json:"RoleId"`
+	Active                bool             `db:"Active" json:"Active"`
+	DailyCvLimit          pgtype.Int4      `db:"DailyCvLimit" json:"DailyCvLimit"`
+	DailyApplicationLimit pgtype.Int4      `db:"DailyApplicationLimit" json:"DailyApplicationLimit"`
+	CreatedAt             pgtype.Timestamp `db:"CreatedAt" json:"CreatedAt"`
+	UpdatedAt             pgtype.Timestamp `db:"UpdatedAt" json:"UpdatedAt"`
 }
 
 type Preference struct {
