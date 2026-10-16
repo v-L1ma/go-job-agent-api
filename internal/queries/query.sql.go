@@ -44,6 +44,15 @@ func (q *Queries) AssignRoleToUser(ctx context.Context, arg AssignRoleToUserPara
 	return err
 }
 
+const confirmUserEmailByEmail = `-- name: ConfirmUserEmailByEmail :exec
+UPDATE "AspNetUsers" SET "EmailConfirmed" = true WHERE "Email" = $1
+`
+
+func (q *Queries) ConfirmUserEmailByEmail(ctx context.Context, email pgtype.Text) error {
+	_, err := q.db.Exec(ctx, confirmUserEmailByEmail, email)
+	return err
+}
+
 const createApplication = `-- name: CreateApplication :exec
 INSERT INTO "Applications" ("UserId", "JobId", "Status", "Obs", "Platform", "CreatedBy", "CreatedAt", "LastModifiedBy", "LastModifiedAt")
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -105,6 +114,22 @@ func (q *Queries) CreateApplicationRate(ctx context.Context, arg CreateApplicati
 		arg.LastModifiedBy,
 		arg.LastModifiedAt,
 	)
+	return err
+}
+
+const createEmailConfirmationToken = `-- name: CreateEmailConfirmationToken :exec
+INSERT INTO "EmailConfirmationTokens" ("Email", "TokenHash", "ExpiresAt")
+VALUES ($1, $2, $3)
+`
+
+type CreateEmailConfirmationTokenParams struct {
+	Email     string             `db:"Email" json:"Email"`
+	TokenHash string             `db:"TokenHash" json:"TokenHash"`
+	ExpiresAt pgtype.Timestamptz `db:"ExpiresAt" json:"ExpiresAt"`
+}
+
+func (q *Queries) CreateEmailConfirmationToken(ctx context.Context, arg CreateEmailConfirmationTokenParams) error {
+	_, err := q.db.Exec(ctx, createEmailConfirmationToken, arg.Email, arg.TokenHash, arg.ExpiresAt)
 	return err
 }
 
@@ -852,6 +877,27 @@ func (q *Queries) GetApplicationsWithQuestions(ctx context.Context, userid pgtyp
 		return nil, err
 	}
 	return items, nil
+}
+
+const getEmailConfirmationTokenByHash = `-- name: GetEmailConfirmationTokenByHash :one
+SELECT "Id", "Email", "TokenHash", "ExpiresAt", "Used", "CreatedAt"
+FROM "EmailConfirmationTokens"
+WHERE "TokenHash" = $1
+LIMIT 1
+`
+
+func (q *Queries) GetEmailConfirmationTokenByHash(ctx context.Context, tokenhash string) (EmailConfirmationToken, error) {
+	row := q.db.QueryRow(ctx, getEmailConfirmationTokenByHash, tokenhash)
+	var i EmailConfirmationToken
+	err := row.Scan(
+		&i.Id,
+		&i.Email,
+		&i.TokenHash,
+		&i.ExpiresAt,
+		&i.Used,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
 const getExecutionJobs = `-- name: GetExecutionJobs :many
@@ -2508,6 +2554,15 @@ func (q *Queries) InsertSubscriptionFromCheckout(ctx context.Context, arg Insert
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const markEmailConfirmationTokenAsUsed = `-- name: MarkEmailConfirmationTokenAsUsed :exec
+UPDATE "EmailConfirmationTokens" SET "Used" = true WHERE "Id" = $1
+`
+
+func (q *Queries) MarkEmailConfirmationTokenAsUsed(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, markEmailConfirmationTokenAsUsed, id)
+	return err
 }
 
 const markResetTokenAsUsed = `-- name: MarkResetTokenAsUsed :exec

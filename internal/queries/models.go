@@ -62,6 +62,15 @@ type CvEvaluation struct {
 	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
 }
 
+type EmailConfirmationToken struct {
+	Id        pgtype.UUID        `db:"Id" json:"Id"`
+	Email     string             `db:"Email" json:"Email"`
+	TokenHash string             `db:"TokenHash" json:"TokenHash"`
+	ExpiresAt pgtype.Timestamptz `db:"ExpiresAt" json:"ExpiresAt"`
+	Used      bool               `db:"Used" json:"Used"`
+	CreatedAt pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+}
+
 type GeneratedCv struct {
 	Id             pgtype.UUID        `db:"Id" json:"Id"`
 	UserId         pgtype.UUID        `db:"UserId" json:"UserId"`

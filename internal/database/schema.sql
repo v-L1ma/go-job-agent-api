@@ -166,6 +166,18 @@ CREATE TABLE IF NOT EXISTS public."PasswordResetTokens" (
 
 create index IF not exists IX_PasswordResetTokens_TokenHash on public."PasswordResetTokens" using btree ("TokenHash");
 
+CREATE TABLE IF NOT EXISTS public."EmailConfirmationTokens" (
+  "Id" uuid not null default gen_random_uuid(),
+  "Email" text not null,
+  "TokenHash" text not null,
+  "ExpiresAt" timestamp with time zone not null,
+  "Used" boolean not null default false,
+  "CreatedAt" timestamp with time zone not null default now(),
+  constraint PK_EmailConfirmationTokens primary key ("Id")
+);
+
+create index IF not exists IX_EmailConfirmationTokens_TokenHash on public."EmailConfirmationTokens" using btree ("TokenHash");
+
 CREATE TABLE IF NOT EXISTS public."Applications" (
   "Id" uuid not null default gen_random_uuid(),
   "UserId" uuid not null,

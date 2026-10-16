@@ -21,10 +21,13 @@ O token JWT é obtido via `POST /login` ou `POST /register` e expira em **15 hor
 | Método | Rota | Descrição |
 |--------|------|-----------|
 | POST | `/login` | Autenticar usuário |
-| POST | `/register` | Criar nova conta |
+| POST | `/login/google` | Autenticar com Google (ID Token) |
+| POST | `/register` | Criar nova conta (envia e-mail de ativação) |
+| POST | `/verify-email` | Confirmar e-mail com o token recebido por e-mail |
+| POST | `/resend-confirmation` | Reenviar o link de ativação da conta |
 | POST | `/refresh-token` | Renovar token JWT |
-| POST | `/forgot-password` | Solicitar reset de senha |
-| POST | `/reset-password` | Executar reset de senha |
+| POST | `/forgot-password` | Solicitar link de recuperação de senha (enviado por e-mail) |
+| POST | `/reset-password` | Executar reset de senha com o token do e-mail |
 | GET | `/plans` | Listar planos de assinatura |
 | POST | `/webhook/stripe` | Webhook do Stripe (validado por `Stripe-Signature`) |
 
@@ -32,23 +35,32 @@ O token JWT é obtido via `POST /login` ou `POST /register` e expira em **15 hor
 
 | Método | Rota | Descrição |
 |--------|------|-----------|
-| GET | `/jobs` | Listar vagas (paginação por cursor) |
+| GET | `/jobs` | Listar vagas (paginação por cursor + filtros) |
 | GET | `/jobs/:jobId` | Detalhes de uma vaga |
 | POST | `/jobs/:jobId/rate` | Avaliar uma vaga |
 | POST | `/jobs/:jobId/cv` | Gerar currículo personalizado para a vaga |
-| POST | `/jobs/:jobId/apply` | Candidatar-se a uma vaga |
-| POST | `/users/cv` | Upload de currículo (PDF) |
-| GET | `/users/cv` | Baixar currículo do usuário (PDF) |
-| GET | `/users/cv/generated` | Listar currículos gerados |
-| GET | `/users/cv/:cvId` | Baixar currículo gerado por ID (PDF) |
-| GET | `/users/profile` | Obter perfil do usuário |
-| PUT | `/users/profile` | Atualizar perfil |
-| POST | `/users/preferences` | Criar/atualizar preferências |
-| GET | `/users/preferences` | Obter preferências |
-| PUT | `/users/change-password` | Alterar senha |
-| GET | `/users/statistics` | Obter estatísticas do dashboard |
+| GET | `/questions` | Listar perguntas respondidas pelo usuário |
+| POST | `/questions` | Responder perguntas de uma vaga (IA) |
+| PUT | `/questions/:questionId` | Editar a resposta de uma pergunta |
+| POST | `/applications` | Candidatar-se a uma vaga |
+| GET | `/applications` | Listar candidaturas (com perguntas) |
+| POST | `/applications/:applicationId/rate` | Avaliar uma candidatura |
+| POST | `/cv` | Upload de currículo (PDF) |
+| GET | `/cv` | Baixar currículo do usuário (PDF) |
+| GET | `/cv/generated` | Listar currículos gerados |
+| GET | `/cv/:cvId` | Baixar currículo gerado por ID (PDF) |
+| GET | `/profile` | Obter perfil do usuário |
+| PUT | `/profile` | Atualizar perfil |
+| POST | `/preferences` | Criar/atualizar preferências |
+| GET | `/preferences` | Obter preferências |
+| PUT | `/change-password` | Alterar senha |
+| GET | `/statistics` | Obter estatísticas do dashboard |
 | POST | `/checkout/session/:planId` | Criar sessão de checkout Stripe (client secret) |
 | GET | `/subscriptions/me` | Obter assinatura do usuário autenticado |
+| POST | `/subscriptions/me/cancel` | Agendar cancelamento ao fim do período |
+| POST | `/subscriptions/me/resume` | Reverter cancelamento agendado |
+| POST | `/subscriptions/me/portal-session` | Criar sessão do Billing Portal (Stripe) |
+| GET | `/subscriptions/me/invoices` | Listar faturas da assinatura do usuário |
 
 ### Admin (requerem JWT + role `Admin`)
 
@@ -98,11 +110,61 @@ Autentica o usuário e retorna um token JWT.
 }
 ```
 
+**Response `403 Forbidden` (e-mail ainda não confirmado):**
+```json
+{
+  "error": "E-mail não confirmado. Verifique sua caixa de entrada ou reenvie o link de ativação."
+}
+```
+
+> Após validar a senha, se `"EmailConfirmed" = false` o login é bloqueado com
+> `403` **antes** de emitir o token JWT. O usuário deve confirmar o e-mail pelo
+> link enviado no `/register` (ou reenviar com `/resend-confirmation`).
+
+---
+
+### POST `/login/google`
+
+Autentica (ou cria) o usuário a partir de um **ID Token do Google**. O token é
+validado contra o audience configurado em `GOOGLE_CLIENT_ID`.
+
+**Request:**
+```json
+{
+  "idToken": "eyJhbGciOiJSUzI1NiIs..."
+}
+```
+
+**Response `200 OK` (mesmo shape do `/login`):**
+```json
+{
+  "message": "Login efetuado com sucesso!",
+  "token": "eyJhbGciOiJIUzI1NiIs..."
+}
+```
+
+> Se o e-mail ainda não existir, a conta é criada automaticamente com a role
+> `Standard`.
+
+**Response `400 Bad Request`:**
+```json
+{
+  "error": "idToken é obrigatório"
+}
+```
+
+**Response `401 Unauthorized`:**
+```json
+{
+  "error": "Google ID Token inválido"
+}
+```
+
 ---
 
 ### POST `/register`
 
-Cria uma nova conta de usuário.
+Cria uma nova conta de usuário e envia o **e-mail de ativação**.
 
 **Request:**
 ```json
@@ -123,9 +185,22 @@ Validações:
 **Response `201 Created`:**
 ```json
 {
-  "Message": "Usuário criado com sucesso."
+  "Message": "Usuário criado com sucesso. Verifique seu e-mail para ativar sua conta."
 }
 ```
+
+> **Confirmação de e-mail:** a conta é criada com `"EmailConfirmed": false` e
+> só permite login depois de `POST /verify-email`.
+>
+> Um token de 32 bytes é gerado e guardado **apenas como hash SHA-256** em
+> `EmailConfirmationTokens` (expira em **24 horas**, single-use). O link enviado
+> por e-mail é `{FRONTEND_URL}/verify-email?token={token}`.
+>
+> O e-mail usa o template Resend `account-confirmation`. **Falha no envio não
+> falha o registro**: o erro é apenas logado e a resposta continua `201` (o
+> usuário pode reenviar com `/resend-confirmation`).
+>
+> Usuário + role + token são criados em **uma única transação**.
 
 **Response `400 Bad Request` (validação):**
 ```json
@@ -175,7 +250,8 @@ Renova um token JWT existente antes da expiração.
 
 ### POST `/forgot-password`
 
-Solicita um token para redefinição de senha.
+Solicita a redefinição de senha. O link de recuperação é enviado **por
+e-mail** para o endereço informado.
 
 **Request:**
 ```json
@@ -184,28 +260,37 @@ Solicita um token para redefinição de senha.
 }
 ```
 
-**Response `200 OK` (email encontrado):**
+**Response `200 OK` (sempre — email existe ou não):**
 ```json
 {
-  "message": "Se o e-mail informado estiver cadastrado, você receberá um link para redefinir sua senha.",
-  "resetToken": "a1b2c3d4e5f6..."
+  "message": "Se o e-mail existir, você receberá um link de recuperação."
 }
 ```
 
-**Response `200 OK` (email não encontrado - mesma mensagem por segurança):**
-```json
-{
-  "message": "Se o e-mail informado estiver cadastrado, você receberá um link para redefinir sua senha."
-}
-```
+> **Segurança:** a resposta é **idêntica** nos dois casos (e-mail cadastrado
+> ou não) para não revelar a existência da conta. O token **nunca** aparece
+> na resposta nem em log de request/response.
+>
+> O token é guardado apenas como hash SHA-256 em `PasswordResetTokens`,
+> expira em **1 hora** e é **single-use**. O link enviado é
+> `{FRONTEND_URL}/reset-password?token={token}`.
+>
+> O e-mail usa o template Resend `password-reset` via
+> `Emailer.SendWithTemplate(...)` (ver "Serviço de E-mail").
+>
+> Falha no envio do e-mail também devolve `200` (apenas loga o erro no
+> servidor) — o usuário jamais deve distinguir os casos.
 
-> O `resetToken` retornado é um hex de 64 caracteres que expira em 1 hora. Em produção, este token deve ser enviado por email.
+**Variáveis de ambiente do envio (ver "Serviço de E-mail" e a tabela
+completa no final):** `RESEND_API_KEY`, `FRONTEND_URL`.
 
 ---
 
 ### POST `/reset-password`
 
-Redefine a senha usando o token obtido em `/forgot-password`.
+Redefine a senha usando o token recebido **por e-mail** no fluxo de
+`/forgot-password` (o frontend lê o query param `?token=` da URL
+`{FRONTEND_URL}/reset-password?token=...` e envia aqui).
 
 **Request:**
 ```json
@@ -221,6 +306,9 @@ Validações:
 - `newPassword`: obrigatório, min 6, max 50
 - `confirmPassword`: obrigatório, min 6
 
+> Trocar a senha e consumir o token acontecem **na mesma transação**: ou as
+> duas coisas acontecem, ou nenhuma (token single-use + expiração de 1h).
+
 **Response `200 OK`:**
 ```json
 {
@@ -228,12 +316,97 @@ Validações:
 }
 ```
 
-**Response `400 Bad Request`:**
+**Response `400 Bad Request`** (token inválido, já usado ou expirado):
 ```json
 {
   "error": "Token inválido ou expirado."
 }
 ```
+
+**Response `400 Bad Request`** (senhas não conferem):
+```json
+{
+  "error": "As senhas não coincidem."
+}
+```
+
+---
+
+### POST `/verify-email`
+
+Confirma a conta a partir do token recebido por e-mail no `/register` (ou no
+`/resend-confirmation`). Rota **pública** (sem JWT). O frontend lê o query
+param `?token=` da URL `{FRONTEND_URL}/verify-email?token=...` e envia aqui.
+
+**Request:**
+```json
+{
+  "token": "a1b2c3d4e5f6..."
+}
+```
+
+Validações:
+- `token`: obrigatório
+
+**Response `200 OK`:**
+```json
+{
+  "message": "E-mail confirmado com sucesso!"
+}
+```
+
+> **Idempotente:** se a conta **já está confirmada**, a resposta também é `200`
+> com a mesma mensagem — independentemente de o token já ter sido usado ou
+> ter expirado. Isso existe porque scanners de e-mail abrem os links antes do
+> usuário.
+>
+> O token é buscado **sem** filtro de `Used`/`ExpiresAt`; a decisão é tomada
+> pelo servidor: token inexistente → `400`; conta não confirmada + token
+> expirado/já usado → `400`; caso válido → `UPDATE "AspNetUsers"
+> SET "EmailConfirmed" = true` + marca o token como usado **na mesma
+> transação** (single-use).
+
+**Response `400 Bad Request`** (token inválido, desconhecido, expirado ou já
+usado com conta ainda não confirmada):
+```json
+{
+  "error": "Token inválido ou expirado."
+}
+```
+
+---
+
+### POST `/resend-confirmation`
+
+Reenvia o link de ativação da conta. Rota **pública** (sem JWT).
+
+**Request:**
+```json
+{
+  "email": "joao@email.com"
+}
+```
+
+Validações:
+- `email`: obrigatório, formato email
+
+**Response `200 OK` (sempre — e-mail existe ou não, confirmado ou não):**
+```json
+{
+  "message": "Se o e-mail existir e ainda não estiver confirmado, você receberá um novo link de ativação."
+}
+```
+
+> **Segurança:** a resposta é **idêntica** em todos os casos para não revelar
+> a existência da conta.
+>
+> O e-mail só é enviado quando o usuário existe **e** `"EmailConfirmed" =
+> false`. A cada chamada é criado um **novo** token de 24h (hash SHA-256 em
+> `EmailConfirmationTokens`); os anteriores continuam válidos até expirarem.
+>
+> Usa o mesmo template Resend `account-confirmation` e o mesmo link
+> `{FRONTEND_URL}/verify-email?token={token}` do `/register`. Falha no envio
+> (ou erro interno) é apenas logada — a resposta continua `200`.
 
 ---
 
@@ -255,7 +428,18 @@ Lista vagas disponíveis com paginação por cursor.
 | Parâmetro | Tipo | Obrigatório | Padrão | Descrição |
 |-----------|------|-------------|--------|-----------|
 | `limit` | int | não | `10` | Quantidade de resultados por página |
-| `cursor` | string (RFC3339) | não | - | Timestamp do último item da página anterior |
+| `cursor` | string (base64) | não | - | Cursor devolvido em `nextCursor` (página seguinte) |
+| `platform` | string | não | - | Filtra por plataforma (**igualdade exata**, ex.: `LinkedIn`) |
+| `stack` | string | não | - | Filtra por **cargo/título** da vaga (`Title ILIKE`, case-insensitive) — rótulo da UI: "Cargo ou Stack" |
+| `company` | string | não | - | Filtra por **empresa** (`Company ILIKE`, case-insensitive) |
+
+> **`location` NÃO é suportado.** A tabela `Jobs` não possui coluna de
+> localização, então o filtro não existe no backend — enviá-lo é silenciosamente
+> ignorado. A UI não deve exibir/enviar esse parâmetro.
+
+> Os filtros `platform`, `stack` e `company` são aplicados **antes** da
+> comparação do cursor (mesma CTE), então a paginação por cursor continua
+> estável mesmo alternando filtros entre as páginas.
 
 **Response `200 OK`:**
 ```json
@@ -275,14 +459,17 @@ Lista vagas disponíveis com paginação por cursor.
       "lastModifiedBy": "system",
       "lastModifiedAt": "2026-07-03T10:00:00Z",
       "platform": "LinkedIn",
-      "company": "Empresa XYZ"
+      "company": "Empresa XYZ",
+      "score": 0.87
     }
   ],
-  "nextCursor": "2026-07-03T10:00:00Z"
+  "nextCursor": "eyJzIjowLjg3LCJjIjoiMjAyNi0wNy0wM1QxMDowMDowMFoiLCJpIjoiNTUwZTg0MDAt..."
 }
 ```
 
-Para obter a próxima página, use o valor de `nextCursor` como `?cursor=2026-07-03T10:00:00Z`.
+Para obter a próxima página, envie o valor exato de `nextCursor` como
+`?cursor=<nextCursor>` (é um base64 de `{s: score, c: createdAt, i: jobId}`).
+`nextCursor` ausente/`""` significa última página.
 
 ---
 
@@ -377,29 +564,250 @@ ou
 }
 ```
 
-> O usuário deve ter feito upload de um currículo via `POST /users/cv` antes de usar esta rota.
+> O usuário deve ter feito upload de um currículo via `POST /cv` antes de usar esta rota.
 
 ---
 
-### POST `/jobs/:jobId/apply`
+### GET `/questions`
 
-Candidata-se a uma vaga.
+Lista as perguntas de formulário já respondidas pelo usuário (e a vaga
+relacionada).
 
-**Path Parameter:**
-| Parâmetro | Tipo | Descrição |
-|-----------|------|-----------|
-| `jobId` | UUID | ID da vaga |
-
-**Response `201 Created`:**
+**Response `200 OK`:**
 ```json
 {
-  "message": "Aplicação concluída com sucesso!"
+  "message": "Perguntas encontradas com sucesso!",
+  "data": [
+    {
+      "Question": "Qual sua pretensão salarial?",
+      "Answer": "R$ 12.000",
+      "Title": "Desenvolvedor Go"
+    }
+  ]
+}
+```
+
+> As chaves seguem o nome da coluna (PascalCase) — a linha vem direto do
+> sqlc. `Title` é `null` quando a vaga relacionada não existe mais.
+> Sem perguntas, o campo `data` é **omitido** (envelope com `omitempty`).
+
+---
+
+### POST `/questions`
+
+Recebe as perguntas de um formulário de candidatura (`jobId`), responde as
+que ainda não foram respondidas usando IA (Gemini) a partir do currículo +
+descrição da vaga, grava as respostas em transação e devolve **todas** as
+respostas (as já existentes + as novas).
+
+**Request:**
+```json
+{
+  "jobId": "550e8400-e29b-41d4-a716-446655440000",
+  "questoes": [
+    {
+      "pergunta": "Você tem experiência com Go?",
+      "tipo": "text",
+      "opcoes": ["Sim", "Não"]
+    },
+    {
+      "pergunta": "Qual sua pretensão salarial?",
+      "tipo": "numeric"
+    }
+  ]
+}
+```
+
+Validações/campos:
+- `jobId`: obrigatório (UUID)
+- `questoes[].pergunta`: obrigatório
+- `questoes[].tipo`: tipo da pergunta (ex.: `text`, `numeric`, `select`)
+- `questoes[].opcoes`: opcional (opcções quando o tipo é de escolha)
+
+**Response `200 OK`:**
+```json
+{
+  "message": "Respostas recebidas com sucesso!",
+  "data": [
+    {
+      "pergunta": "Você tem experiência com Go?",
+      "resposta": "Sim, atuo com Go há 4 anos..."
+    },
+    {
+      "pergunta": "Qual sua pretensão salarial?",
+      "resposta": "12000"
+    }
+  ]
+}
+```
+
+> Se **todas** as perguntas já tiverem resposta no banco, a IA não é chamada:
+> as respostas existentes são devolvidas no mesmo shape.
+
+**Response `500 Internal Server Error`:**
+```json
+{
+  "error": "Resposta inválida da IA"
 }
 ```
 
 ---
 
-### POST `/users/cv`
+### PUT `/questions/:questionId`
+
+Edita a resposta de uma pergunta.
+
+**Path Parameter:**
+| Parâmetro | Tipo | Descrição |
+|-----------|------|-----------|
+| `questionId` | UUID | ID da pergunta |
+
+**Request:**
+```json
+{
+  "answer": "Sim, tenho 5 anos de experiência com Go e PostgreSQL."
+}
+```
+
+Validações:
+- `answer`: obrigatório, min 2, max 2000
+
+**Response `200 OK`:**
+```json
+{
+  "Message": "Perguntas encontradas com sucesso!"
+}
+```
+
+> Atenção: esta rota devolve a chave **`Message`** (maiúscula), e não
+> `message` — é o contrato atual do handler.
+
+**Response `400 Bad Request` (validação):**
+```json
+{
+  "error": "Key: 'EditQuestion.Answer' Error:Field validation for 'Answer' failed on the 'min' tag"
+}
+```
+
+**Response `500 Internal Server Error`:**
+```json
+{
+  "error": "Questão não pertence a outro usuário."
+}
+```
+(retornado quando a pergunta pertence a outro usuário, ou quando o UUID é
+inválido)
+
+---
+
+### POST `/applications`
+
+Candidata-se a uma vaga. O `jobId` vai no **body** (não há rota
+`/jobs/:jobId/apply`).
+
+**Request:**
+```json
+{
+  "jobId": "550e8400-e29b-41d4-a716-446655440000",
+  "status": "applied",
+  "observation": "Candidatura enviada pelo painel",
+  "platform": "LinkedIn"
+}
+```
+
+**Response `201 Created`:**
+```json
+{
+  "message": "Candidatura concluída com sucesso!"
+}
+```
+
+**Response `400 Bad Request`:**
+```json
+{
+  "error": "Invalid request body"
+}
+```
+
+---
+
+### GET `/applications`
+
+Lista as candidaturas do usuário (com `status != closed`), mais recentes
+primeiro, incluindo as perguntas já respondidas para cada vaga.
+
+**Response `200 OK`:**
+```json
+{
+  "message": "Candidaturas encontradas com sucesso!",
+  "data": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440001",
+      "title": "Desenvolvedor Go",
+      "company": "Empresa XYZ",
+      "platform": "LinkedIn",
+      "status": "applied",
+      "createdAt": "2026-07-03T10:00:00Z",
+      "questionsCount": 3,
+      "questions": [
+        {
+          "id": "550e8400-e29b-41d4-a716-446655440002",
+          "question": "Qual sua pretensão salarial?",
+          "answer": "R$ 12.000",
+          "type": "text",
+          "options": []
+        }
+      ]
+    }
+  ]
+}
+```
+
+> Quando não há candidaturas, o campo `data` é **omitido** (o envelope usa
+> `omitempty`) — trate `data` como opcional no frontend.
+
+---
+
+### POST `/applications/:applicationId/rate`
+
+Avalia uma candidatura (curtir/não curtir).
+
+**Path Parameter:**
+| Parâmetro | Tipo | Descrição |
+|-----------|------|-----------|
+| `applicationId` | UUID | ID da candidatura |
+
+**Request:**
+```json
+{
+  "liked": true,
+  "feedback": "Processo rápido e transparente"
+}
+```
+
+Validações:
+- `liked`: obrigatório (bool)
+- `feedback`: opcional; min 3, max 600
+
+**Response `201 Created`:**
+```json
+{
+  "message": "Candidatura avaliada com sucesso!"
+}
+```
+
+**Response `400 Bad Request` (validação):**
+```json
+{
+  "errors": {
+    "RateApplicationRequest.feedback": "Este campo deve ter no mínimo 3 caracteres"
+  }
+}
+```
+
+---
+
+### POST `/cv`
 
 Faz upload de um currículo em PDF. O arquivo é extraído e analisado por IA.
 
@@ -453,7 +861,7 @@ Faz upload de um currículo em PDF. O arquivo é extraído e analisado por IA.
 
 ---
 
-### GET `/users/cv`
+### GET `/cv`
 
 Baixa o currículo do usuário como PDF.
 
@@ -468,7 +876,7 @@ Baixa o currículo do usuário como PDF.
 
 ---
 
-### GET `/users/cv/generated`
+### GET `/cv/generated`
 
 Lista todos os currículos gerados pelo usuário.
 
@@ -495,7 +903,7 @@ Lista todos os currículos gerados pelo usuário.
 
 ---
 
-### GET `/users/cv/:cvId`
+### GET `/cv/:cvId`
 
 Baixa um currículo gerado específico como PDF.
 
@@ -522,7 +930,7 @@ Baixa um currículo gerado específico como PDF.
 
 ---
 
-### GET `/users/profile`
+### GET `/profile`
 
 Retorna os dados do perfil do usuário autenticado.
 
@@ -541,7 +949,7 @@ Retorna os dados do perfil do usuário autenticado.
 
 ---
 
-### PUT `/users/profile`
+### PUT `/profile`
 
 Atualiza nome e/ou email do perfil.
 
@@ -573,7 +981,7 @@ Validações:
 
 ---
 
-### POST `/users/preferences`
+### POST `/preferences`
 
 Cria ou atualiza as preferências de busca de vagas do usuário (skills e níveis de senioridade).
 
@@ -581,9 +989,16 @@ Cria ou atualiza as preferências de busca de vagas do usuário (skills e nívei
 ```json
 {
   "skills": ["Go", "PostgreSQL", "Docker", "Kubernetes"],
-  "levels": ["Junior", "Pleno", "Senior"]
+  "levels": ["Junior", "Pleno", "Senior"],
+  "precision": 0.7
 }
 ```
+
+Validações:
+- `skills`: obrigatório, min 1 item
+- `levels`: obrigatório, min 1 item
+- `precision`: obrigatório, entre `0.0` e `1.0` (percentual mínimo de
+  similaridade usado ao listar vagas)
 
 > Se as preferências já existirem, serão atualizadas. Caso contrário, serão criadas.
 
@@ -610,7 +1025,7 @@ Cria ou atualiza as preferências de busca de vagas do usuário (skills e nívei
 
 ---
 
-### GET `/users/preferences`
+### GET `/preferences`
 
 Retorna as preferências de busca do usuário.
 
@@ -618,19 +1033,22 @@ Retorna as preferências de busca do usuário.
 ```json
 {
   "message": "Preferências encontradas com sucesso!",
-  "data": [
-    {
-      "UserId": "550e8400-e29b-41d4-a716-446655440000",
-      "Skills": ["Go", "PostgreSQL", "Docker"],
-      "Levels": ["Pleno", "Senior"]
-    }
-  ]
+  "data": {
+    "UserId": "550e8400-e29b-41d4-a716-446655440000",
+    "SimilarityPercent": 0.7,
+    "Keywords": ["Go", "PostgreSQL", "Docker"],
+    "Levels": ["Pleno", "Senior"]
+  }
 }
 ```
 
+> `data` é um **objeto** (não lista), com os nomes das colunas em
+> PascalCase. Sem preferências, `Keywords`/`Levels` vêm vazios (`[]`) e
+> `SimilarityPercent` é `0.7` (padrão).
+
 ---
 
-### PUT `/users/change-password`
+### PUT `/change-password`
 
 Altera a senha do usuário autenticado.
 
@@ -659,7 +1077,7 @@ Altera a senha do usuário autenticado.
 
 ---
 
-### GET `/users/statistics`
+### GET `/statistics`
 
 Retorna estatísticas do dashboard do usuário.
 
@@ -930,7 +1348,11 @@ Cria uma Checkout Session (`mode=subscription`) para o plano indicado.
 **Comportamento:**
 - Recupera ou cria o Stripe Customer do usuário (tabela `StripeCustomers`) e reutiliza sempre o mesmo;
 - Envia `user_id`/`plan_id` na `metadata` da Session **e** da Subscription, além de `client_reference_id` — o webhook identifica o usuário por esses campos (**nunca por e-mail**);
-- A ativação do acesso **não** acontece aqui: ela ocorre via webhook (`customer.subscription.created/updated`).
+- A ativação do acesso **não** acontece aqui: ela ocorre via webhook (`customer.subscription.created/updated`);
+- Redirecionamentos pós-pagamento derivam da env `FRONTEND_URL` (fallback `http://localhost:3000`):
+  - `return_url` → `{FRONTEND_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`
+    (`{CHECKOUT_SESSION_ID}` é o placeholder **literal** do Stripe, substituído pelo id real da sessão);
+  - `cancel_url` → `{FRONTEND_URL}/checkout/cancel`.
 
 **Response `200 OK`** (`data` = client secret da sessão, ex.: `cs_live_a1b2...`):
 ```json
@@ -1000,6 +1422,181 @@ Retorna a assinatura mais recente do usuário autenticado (a query ordena por
 {
   "message": "Nenhuma assinatura encontrada."
 }
+```
+
+---
+
+### POST `/subscriptions/me/cancel` *(privada)*
+
+Agenda o cancelamento da assinatura para o **fim do período atual**
+(`cancelAtPeriodEnd = true`). **Sem body.** É o comportamento exibido pela UI
+de "Cancelar assinatura": o acesso continua até `currentPeriodEnd`.
+
+> O dono é sempre resolvido pelo `userId` do JWT — não há id na rota.
+
+**Request:** sem corpo (ou corpo vazio).
+
+**Response `200 OK`** (mesmo shape do `GET /subscriptions/me`):
+```json
+{
+  "message": "Cancelamento agendado para o fim do período.",
+  "data": {
+    "id": "8f0a1b2c-0000-4000-8000-000000000000",
+    "planId": "3f6c1b1e-0a1b-4c2d-8e3f-000000000001",
+    "status": "active",
+    "cancelAtPeriodEnd": true,
+    "currentPeriodEnd": "2026-11-08T12:00:00Z",
+    "plan": {
+      "id": "3f6c1b1e-0a1b-4c2d-8e3f-000000000001",
+      "name": "Plano Pro",
+      "description": "Acesso completo",
+      "price": 49.9
+    }
+  }
+}
+```
+
+> `cancelAtPeriodEnd` é o valor **recém-confirmado pela API do Stripe**
+> (a tabela só é sincronizada pelo webhook `customer.subscription.updated`).
+
+**Response `404 Not Found`** — usuário sem assinatura:
+```json
+{ "error": "subscription not found" }
+```
+
+**Response `400 Bad Request`** — assinatura ainda sem id no Stripe (checkout
+não concluído):
+```json
+{ "error": "subscription has no stripe id" }
+```
+
+**Response `400 Bad Request` / `401 Unauthorized`** — claim inválido/ausente:
+```json
+{ "error": "invalid user id" }
+```
+```json
+{ "error": "unauthorized" }
+```
+
+**Response `500 Internal Server Error`** — falha na API do Stripe:
+```json
+{ "error": "failed to update subscription" }
+```
+
+---
+
+### POST `/subscriptions/me/resume` *(privada)*
+
+Reverte o cancelamento agendado (`cancelAtPeriodEnd = false`) — o
+cancelamento no fim do período é **reversível** enquanto não ocorrer.
+**Sem body.** Mesmos caminhos de erro e mesmo shape de resposta do
+`/cancel`.
+
+**Response `200 OK`:**
+```json
+{
+  "message": "Cancelamento removido.",
+  "data": {
+    "id": "8f0a1b2c-0000-4000-8000-000000000000",
+    "planId": "3f6c1b1e-0a1b-4c2d-8e3f-000000000001",
+    "status": "active",
+    "cancelAtPeriodEnd": false,
+    "currentPeriodEnd": "2026-11-08T12:00:00Z",
+    "plan": {
+      "id": "3f6c1b1e-0a1b-4c2d-8e3f-000000000001",
+      "name": "Plano Pro",
+      "description": "Acesso completo",
+      "price": 49.9
+    }
+  }
+}
+```
+
+Erros: `404` (`subscription not found`), `400`
+(`subscription has no stripe id`), `401`/`400` (claim), `500`
+(`failed to update subscription`) — idênticos ao `/cancel`.
+
+---
+
+### POST `/subscriptions/me/portal-session` *(privada)*
+
+Cria uma sessão do **Billing Portal** do Stripe (o usuário gerencia cartão,
+plano e cancelamento na UI do Stripe). **Sem body.**
+
+**Response `200 OK`:**
+```json
+{
+  "message": "Sessão do portal de cobrança criada com sucesso.",
+  "data": {
+    "url": "https://billing.stripe.com/session/cs_test_a1b2c3d4..."
+  }
+}
+```
+
+> `return_url` da sessão = `{FRONTEND_URL}/perfil` (env `FRONTEND_URL`).
+
+**Response `404 Not Found`** — usuário sem assinatura:
+```json
+{ "error": "subscription not found" }
+```
+
+**Response `400 Bad Request`** — nenhum Stripe Customer vinculado:
+```json
+{ "error": "subscription has no stripe customer" }
+```
+
+**Response `500 Internal Server Error`:**
+```json
+{ "error": "failed to create billing portal session" }
+```
+
+---
+
+### GET `/subscriptions/me/invoices` *(privada)*
+
+Lista as faturas da assinatura do usuário (tabela `StripeInvoices`), mais
+recentes primeiro, no máximo **20**.
+
+**Response `200 OK` (com faturas):**
+```json
+{
+  "message": "Faturas listadas com sucesso.",
+  "data": [
+    {
+      "id": "inv_123",
+      "amountPaid": 49.9,
+      "currency": "brl",
+      "status": "paid",
+      "paidAt": "2026-01-02T15:04:05Z",
+      "createdAt": "2026-01-02T15:04:05Z"
+    }
+  ]
+}
+```
+
+- `amountPaid` é emitido **em reais (float)**; `NULL` no banco → `0`;
+- `paidAt` é `null` quando não pago; `currency` é `""` quando `NULL`.
+
+**Response `200 OK` (sem faturas / sem assinatura / checkout não concluído)** —
+`data` é **sempre** lista, `[]` nunca `null`:
+```json
+{
+  "message": "Faturas listadas com sucesso.",
+  "data": []
+}
+```
+
+**Response `401 Unauthorized` / `400 Bad Request`** — claim ausente/inválido:
+```json
+{ "error": "unauthorized" }
+```
+```json
+{ "error": "invalid user id" }
+```
+
+**Response `500 Internal Server Error`:**
+```json
+{ "error": "..." }
 ```
 
 ---
@@ -1314,6 +1911,33 @@ Histórico de assinaturas de um usuário, ordenado por `createdAt` **DESC**. **S
 
 ---
 
+## Serviço de E-mail
+
+O envio é feito pelo Resend (`internal/services/email.go`) através da
+interface `Emailer`:
+
+```go
+type Emailer interface {
+    Send(ctx context.Context, to, subject, htmlBody string) error
+    SendWithTemplate(ctx context.Context, to, templateName string, variables map[string]interface{}) error
+}
+```
+
+> **Refatoração:** o método `SendPasswordResetTemplate(ctx, to, name,
+> resetLink)` foi **removido** e substituído por `SendWithTemplate`, que
+> aceita o nome do template como parâmetro. Cada handler escolhe o template:
+
+| Template (Resend) | Chamado por | Variáveis |
+|---|---|---|
+| `password-reset` | `POST /forgot-password` | `LINK_DE_REDEFINICAO`, `NOME_DO_USUARIO` |
+| `account-confirmation` | `POST /register`, `POST /resend-confirmation` | `LINK_DE_ATIVACAO`, `NOME_DO_USUARIO` |
+
+- Templates enviados com `From: "Contato <contato@trampo.click>"` (fixo,
+  igual ao comportamento anterior) — o `EMAIL_FROM` só afeta `Send()`.
+- Exige `RESEND_API_KEY` (sem ela o servidor não sobe — `log.Fatal`).
+- Erros de envio são **sempre apenas logados** pelo handler; a resposta da
+  API não muda (nenhum fluxo depende do envio ter sucedido).
+
 ## Middleware Global
 
 - **RequestLogger** — Loga todas as requisições
@@ -1326,7 +1950,7 @@ Histórico de assinaturas de um usuário, ordenado por `createdAt` **DESC**. **S
 |--------|-------------|
 | `400` | Bad Request — corpo inválido, validação, duplicidade |
 | `401` | Unauthorized — token ausente, inválido ou expirado |
-| `403` | Forbidden — usuário sem a role `Admin` |
+| `403` | Forbidden — usuário sem a role `Admin`, ou login com e-mail ainda não confirmado |
 | `404` | Not Found — recurso não encontrado |
 | `409` | Conflict — recurso duplicado (ex.: cargo com nome existente) |
 | `422` | Unprocessable Entity — plano sem preço Stripe configurado |
@@ -1341,10 +1965,16 @@ Histórico de assinaturas de um usuário, ordenado por `createdAt` **DESC**. **S
 | `DB_USER` | `jacob` | Usuário do banco |
 | `DB_PASSWORD` | `password` | Senha do banco |
 | `DB_NAME` | `bookstoreDB` | Nome do banco |
+| `DB_SSLMODE` | `disable` | Modo SSL da conexão PostgreSQL (ex.: `disable`, `require`) |
 | `JWT_SECRET` | - | Chave secreta para assinar tokens JWT |
 | `CORS_ORIGINS` | `http://localhost:3000` | Origens permitidas (separadas por vírgula) |
 | `GEMINI_API_KEY` | - | Chave da API Google Gemini |
 | `STRIPE_SECRET_KEY` | - | Chave secreta da API Stripe (fallback: `STRIPE_API_KEY`) |
+| `STRIPE_API_KEY` | - | Chave secreta da API Stripe usada quando `STRIPE_SECRET_KEY` não está definida (nome antigo, mantido por compatibilidade) |
 | `STRIPE_WEBHOOK_SECRET` | - | Segredo do endpoint de webhook Stripe (`whsec_...`), usado para validar `Stripe-Signature` |
 | `STRIPE_PRICE_ID` | - | Price ID consumido pelo **frontend** no checkout (o backend não lê esta variável) |
 | `SCRAPPER_URL` | - | URL do serviço externo de scraping |
+| `FRONTEND_URL` | `http://localhost:3000` | Base do frontend usada para montar links: `{FRONTEND_URL}/reset-password?token=...` e `{FRONTEND_URL}/verify-email?token=...` (e-mails), `return_url`/`cancel_url` do checkout (`/checkout/success?session_id={CHECKOUT_SESSION_ID}` e `/checkout/cancel`) e `return_url` do Billing Portal (`/perfil`) |
+| `RESEND_API_KEY` | - | Chave da API Resend, usada pelo serviço de e-mail (`internal/services/email.go`). **Obrigatória**: sem ela o servidor encerra no boot (`log.Fatal`) |
+| `EMAIL_FROM` | `Acme <onboarding@resend.dev>` | Remetente usado por `Emailer.Send()` (HTML puro). Os templates (`SendWithTemplate`) usam `Contato <contato@trampo.click>` fixo |
+| `GOOGLE_CLIENT_ID` | - | Audience esperada do ID Token em `POST /login/google` |

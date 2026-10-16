@@ -64,6 +64,14 @@ func RegisterRoutes(e *echo.Echo, db *database.Database) {
 		return handlers.ResetPassword(c, db)
 	})
 
+	api.POST("/verify-email", func(c *echo.Context) error {
+		return handlers.VerifyEmail(c, db)
+	})
+
+	api.POST("/resend-confirmation", func(c *echo.Context) error {
+		return handlers.ResendConfirmation(c, db)
+	})
+
 	api.POST("/sync", func(c *echo.Context) error {
 		return handlers.SyncJobsEmbeddings(c, db)
 	})
@@ -85,6 +93,23 @@ func RegisterRoutes(e *echo.Echo, db *database.Database) {
 
 	private.GET("/subscriptions/me", func(c *echo.Context) error {
 		return handlers.GetMySubscription(c, db)
+	})
+
+	// Gestão da assinatura do próprio usuário (ownership sempre pelo JWT).
+	private.POST("/subscriptions/me/cancel", func(c *echo.Context) error {
+		return handlers.CancelMySubscription(c, db)
+	})
+
+	private.POST("/subscriptions/me/resume", func(c *echo.Context) error {
+		return handlers.ResumeMySubscription(c, db)
+	})
+
+	private.POST("/subscriptions/me/portal-session", func(c *echo.Context) error {
+		return handlers.CreateBillingPortalSession(c, db)
+	})
+
+	private.GET("/subscriptions/me/invoices", func(c *echo.Context) error {
+		return handlers.GetMyInvoices(c, db)
 	})
 
 	private.GET("/jobs", func(c *echo.Context) error {

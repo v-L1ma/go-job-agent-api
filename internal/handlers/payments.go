@@ -25,6 +25,9 @@ import (
 //   - envia user_id/plan_id na metadata da Session e da Subscription, além de
 //     client_reference_id — o webhook identifica o usuário por esses campos
 //     (NUNCA por e-mail);
+//   - ReturnURL/CancelURL vêm da env FRONTEND_URL (fallback
+//     http://localhost:3000): /checkout/success?session_id={CHECKOUT_SESSION_ID}
+//     e /checkout/cancel;
 //   - resposta inalterada: {message, data} com data = client secret.
 func CreatePaymentSession(c *echo.Context, db *database.Database) error {
 	planId := c.Param("planId")
@@ -70,6 +73,11 @@ func CreatePaymentSession(c *echo.Context, db *database.Database) error {
 	}
 
 	sc := stripe.NewClient(services.StripeSecretKey())
+
+	// Base do frontend configurável por env (mesma usada no e-mail de reset
+	// de senha). Fallback localhost mantém o dev funcionando.
+	frontendURL := services.FrontendURL()
+
 	params := &stripe.CheckoutSessionCreateParams{
 		Customer:          stripe.String(customerID),
 		ClientReferenceID: stripe.String(userID.String()),
@@ -79,9 +87,12 @@ func CreatePaymentSession(c *echo.Context, db *database.Database) error {
 				Quantity: stripe.Int64(1),
 			},
 		},
-		Mode:                  stripe.String(stripe.CheckoutSessionModeSubscription),
-		UIMode:                stripe.String(stripe.CheckoutSessionUIModeForm),
-		ReturnURL:             stripe.String("http://localhost:3000/perfil"),
+		Mode:   stripe.String(stripe.CheckoutSessionModeSubscription),
+		UIMode: stripe.String(stripe.CheckoutSessionUIModeForm),
+		// {CHECKOUT_SESSION_ID} é o placeholder LITERAL do Stripe: ele é
+		// trocado pelo id real da sessão ao redirecionar o cliente.
+		ReturnURL:             stripe.String(frontendURL + "/checkout/success?session_id={CHECKOUT_SESSION_ID}"),
+		CancelURL:             stripe.String(frontendURL + "/checkout/cancel"),
 		IntegrationIdentifier: stripe.String("embedded_web_0001"),
 		Metadata: map[string]string{
 			"user_id": userID.String(),
