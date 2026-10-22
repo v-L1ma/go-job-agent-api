@@ -1,0 +1,54 @@
+
+name: Deploy para Termux
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-termux
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Conectar ao Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Configurar SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.TERMUX_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.TERMUX_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          printf '%s\n' "$SSH_PRIVATE_KEY" \
+            > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+
+          printf '%s\n' "$SSH_KNOWN_HOSTS" \
+            > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Executar deploy no celular
+        env:
+          TERMUX_HOST: ${{ secrets.TERMUX_HOST }}
+          TERMUX_USER: ${{ secrets.TERMUX_USER }}
+        run: |
+          ssh \
+            -i ~/.ssh/id_ed25519 \
+            -p 8022 \
+            "$TERMUX_USER@$TERMUX_HOST" \
+            "bash ~/deploy.sh"
