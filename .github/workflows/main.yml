@@ -1,5 +1,5 @@
 
-name: Deploy para Termux
+name: Deploy
 
 on:
   push:
@@ -52,4 +52,4 @@ jobs:
             -i ~/.ssh/id_ed25519 \
             -p 8022 \
             "$TERMUX_USER@$TERMUX_HOST" \
-            "bash ~/deploy.sh"
+            "bash ~/go-job-agent-api/start.sh"
