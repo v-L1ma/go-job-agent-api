@@ -26,6 +26,19 @@ jobs:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
           tags: tag:ci
+          
+      - name: Diagnosticar acesso ao Termux
+        env:
+          TERMUX_HOST: ${{ secrets.TERMUX_HOST }}
+        run: |
+          echo "=== Dispositivos Tailscale ==="
+          tailscale status
+
+          echo "=== Testando conectividade ==="
+          tailscale ping --timeout=10s "$TERMUX_HOST" || true
+
+          echo "=== Testando porta SSH 8022 ==="
+          nc -vz -w 5 "$TERMUX_HOST" 8022
 
       - name: Configurar SSH
         env:
