@@ -11,11 +11,11 @@ import (
 )
 
 type CustomValidator struct {
-    validator *validator.Validate
+	validator *validator.Validate
 }
 
 func (cv *CustomValidator) Validate(i interface{}) error {
-    return cv.validator.Struct(i)
+	return cv.validator.Struct(i)
 }
 
 func RegisterRoutes(e *echo.Echo, db *database.Database) {
@@ -25,7 +25,7 @@ func RegisterRoutes(e *echo.Echo, db *database.Database) {
 	// 	// 	Name: "Jacob",
 	// 	// 	Cpf:  "12345678901",
 	// 	// };
-		
+
 	// 	// db.Query.CreateAuthor(c.Request().Context(), new)
 	// 	authors, err := db.Query.ListAuthors(c.Request().Context())
 	// 	if err != nil {
@@ -64,12 +64,16 @@ func RegisterRoutes(e *echo.Echo, db *database.Database) {
 		return handlers.ResetPassword(c, db)
 	})
 
-	api.POST("/sync", func(c *echo.Context) error {
-		return handlers.SyncJobsEmbeddings(c, db)
+	api.POST("/verify-email", func(c *echo.Context) error {
+		return handlers.VerifyEmail(c, db)
 	})
 
-	api.POST("/checkout/session/:planId", func(c *echo.Context) error {
-		return handlers.CreatePaymentSession(c, db)
+	api.POST("/resend-confirmation", func(c *echo.Context) error {
+		return handlers.ResendConfirmation(c, db)
+	})
+
+	api.POST("/sync", func(c *echo.Context) error {
+		return handlers.SyncJobsEmbeddings(c, db)
 	})
 
 	api.POST("/webhook/stripe", func(c *echo.Context) error {
@@ -80,47 +84,105 @@ func RegisterRoutes(e *echo.Echo, db *database.Database) {
 		return handlers.GetPlans(c, db)
 	})
 
+	// Análise de currículo para visitantes (sem JWT, sem persistência e com
+	// rate limit por IP) — precisa ficar fora do grupo `private`.
+	api.POST("/cv-analysis/public", func(c *echo.Context) error {
+		return handlers.AnalyzeCvPublic(c, db)
+	})
+
+	// PDF do currículo melhorado a partir da análise pública recém-gerada.
+	// Rate limit PRÓPIO (5/h por IP) para não esgotar o contador da análise
+	// em si — mesma regra de ficar fora do grupo `private`.
+	api.POST("/cv-analysis/public/improved-cv", func(c *echo.Context) error {
+		return handlers.GenerateImprovedCvPublic(c)
+	})
+
 	private := api.Group("")
 	private.Use(middlewares.JWTMiddleware)
+
+	private.POST("/checkout/session/:planId", func(c *echo.Context) error {
+		return handlers.CreatePaymentSession(c, db)
+	})
+
+	private.GET("/subscriptions/me", func(c *echo.Context) error {
+		return handlers.GetMySubscription(c, db)
+	})
+
+	// Gestão da assinatura do próprio usuário (ownership sempre pelo JWT).
+	private.POST("/subscriptions/me/cancel", func(c *echo.Context) error {
+		return handlers.CancelMySubscription(c, db)
+	})
+
+	private.POST("/subscriptions/me/resume", func(c *echo.Context) error {
+		return handlers.ResumeMySubscription(c, db)
+	})
+
+	private.POST("/subscriptions/me/portal-session", func(c *echo.Context) error {
+		return handlers.CreateBillingPortalSession(c, db)
+	})
+
+	private.GET("/subscriptions/me/invoices", func(c *echo.Context) error {
+		return handlers.GetMyInvoices(c, db)
+	})
 
 	private.GET("/jobs", func(c *echo.Context) error {
 		return handlers.GetJobs(c, db)
 	})
 
-	private.GET("/jobs/:jobId", func(c *echo.Context) error{
+	private.GET("/jobs/:jobId", func(c *echo.Context) error {
 		return handlers.GetJobById(c, db)
 	})
 
-	private.POST("/jobs/:jobId/rate", func (c *echo.Context) error{
+	private.POST("/jobs/:jobId/rate", func(c *echo.Context) error {
 		return handlers.RateJob(c, db)
 	})
 
-	private.POST("/jobs/:jobId/cv", func (c *echo.Context) error{
+	private.POST("/jobs/:jobId/cv", func(c *echo.Context) error {
 		return handlers.GenerateCv(c, db)
 	})
 
-	private.POST("/preferences",func (c *echo.Context) error{
+	private.POST("/preferences", func(c *echo.Context) error {
 		return handlers.SetUserPreferences(c, db)
 	})
 
-	private.GET("/preferences", func (c *echo.Context) error{
+	private.GET("/preferences", func(c *echo.Context) error {
 		return handlers.GetUserPreferences(c, db)
 	})
 
-	private.POST("/cv", func (c *echo.Context) error{
+	private.POST("/cv", func(c *echo.Context) error {
 		return handlers.UploadCv(c, db)
 	})
 
-	private.GET("/cv", func (c *echo.Context) error{
+	private.GET("/cv", func(c *echo.Context) error {
 		return handlers.GetUserCv(c, db)
 	})
 
-	private.GET("/cv/:cvId", func (c *echo.Context) error{
+	private.GET("/cv/:cvId", func(c *echo.Context) error {
 		return handlers.GetCvById(c, db)
 	})
 
-	private.GET("/cv/generated", func (c *echo.Context) error{
+	private.GET("/cv/generated", func(c *echo.Context) error {
 		return handlers.GetGeneratedCvs(c, db)
+	})
+
+	// Análise de currículo (score 0-100 + melhorias) para usuário autenticado.
+	private.POST("/cv-analysis", func(c *echo.Context) error {
+		return handlers.AnalyzeCv(c, db)
+	})
+
+	// PDF do currículo melhorado com base nas dicas de uma análise que o
+	// cliente já possui (histórico local). Rota literal POST — não conflita
+	// com GET /cv-analysis/:analysisId (método e path distintos).
+	private.POST("/cv-analysis/improved-cv", func(c *echo.Context) error {
+		return handlers.GenerateImprovedCv(c)
+	})
+
+	private.GET("/cv-analysis", func(c *echo.Context) error {
+		return handlers.GetCvAnalyses(c, db)
+	})
+
+	private.GET("/cv-analysis/:analysisId", func(c *echo.Context) error {
+		return handlers.GetCvAnalysisById(c, db)
 	})
 
 	private.GET("/profile", func(c *echo.Context) error {
@@ -139,42 +201,42 @@ func RegisterRoutes(e *echo.Echo, db *database.Database) {
 		return handlers.GetUserStatistics(c, db)
 	})
 
-	private.GET("/questions", func (c *echo.Context) error {
+	private.GET("/questions", func(c *echo.Context) error {
 		return handlers.GetQuestions(c, db)
 	})
 
-	private.PUT("/questions/:questionId", func (c *echo.Context) error {
+	private.PUT("/questions/:questionId", func(c *echo.Context) error {
 		return handlers.EditQuestion(c, db)
 	})
 
-	private.POST("/questions", func (c *echo.Context) error{
+	private.POST("/questions", func(c *echo.Context) error {
 		return handlers.AnswerQuestion(c, db)
 	})
 
-	private.POST("/applications", func (c *echo.Context) error{
+	private.POST("/applications", func(c *echo.Context) error {
 		return handlers.ApplyToJob(c, db)
 	})
 
-	private.GET("/applications", func (c *echo.Context) error{
+	private.GET("/applications", func(c *echo.Context) error {
 		return handlers.GetApplications(c, db)
 	})
-	
-	private.POST("/applications/:applicationId/rate", func (c *echo.Context) error{
+
+	private.POST("/applications/:applicationId/rate", func(c *echo.Context) error {
 		return handlers.RateApplication(c, db)
 	})
 
 	admin := private.Group("/admin")
 	admin.Use(middlewares.AdminMiddleware)
 
-	admin.GET("/scrapper/logs/:searchQueryId", func (c *echo.Context) error{
+	admin.GET("/scrapper/logs/:searchQueryId", func(c *echo.Context) error {
 		return handlers.GetScrapperLogs(c, db)
 	})
 
-	admin.GET("/scrapper/jobs/:executionId", func (c *echo.Context) error{
+	admin.GET("/scrapper/jobs/:executionId", func(c *echo.Context) error {
 		return handlers.GetScrapperExecutionJobs(c, db)
 	})
 
-	admin.GET("/search-queries", func (c *echo.Context) error{
+	admin.GET("/search-queries", func(c *echo.Context) error {
 		return handlers.GetSearchQueries(c, db)
 	})
 
@@ -199,11 +261,23 @@ func RegisterRoutes(e *echo.Echo, db *database.Database) {
 	})
 
 	admin.GET("/plans", func(c *echo.Context) error {
-		return handlers.GetPlans(c, db)
+		return handlers.GetAdminPlans(c, db)
+	})
+
+	admin.PUT("/plans/:planId/limits", func(c *echo.Context) error {
+		return handlers.UpdatePlanLimits(c, db)
 	})
 
 	admin.GET("/subscriptions", func(c *echo.Context) error {
 		return handlers.GetSubscriptions(c, db)
 	})
 
-}	
+	admin.GET("/subscriptions/:subscriptionId", func(c *echo.Context) error {
+		return handlers.GetSubscriptionDetails(c, db)
+	})
+
+	admin.GET("/users/:userId/subscriptions", func(c *echo.Context) error {
+		return handlers.GetUserSubscriptions(c, db)
+	})
+
+}

@@ -49,6 +49,19 @@ type AspNetUser struct {
 	PhoneNumberConfirmed bool               `db:"PhoneNumberConfirmed" json:"PhoneNumberConfirmed"`
 }
 
+type CvAnalysis struct {
+	Id             pgtype.UUID        `db:"Id" json:"Id"`
+	UserId         pgtype.UUID        `db:"UserId" json:"UserId"`
+	Score          int32              `db:"Score" json:"Score"`
+	JobTitle       pgtype.Text        `db:"JobTitle" json:"JobTitle"`
+	Result         string             `db:"Result" json:"Result"`
+	Active         bool               `db:"Active" json:"Active"`
+	CreatedBy      string             `db:"CreatedBy" json:"CreatedBy"`
+	CreatedAt      pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+	LastModifiedBy string             `db:"LastModifiedBy" json:"LastModifiedBy"`
+	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
+}
+
 type CvEvaluation struct {
 	Id             pgtype.UUID        `db:"Id" json:"Id"`
 	UserId         pgtype.UUID        `db:"UserId" json:"UserId"`
@@ -60,6 +73,15 @@ type CvEvaluation struct {
 	CreatedAt      pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
 	LastModifiedBy string             `db:"LastModifiedBy" json:"LastModifiedBy"`
 	LastModifiedAt pgtype.Timestamptz `db:"LastModifiedAt" json:"LastModifiedAt"`
+}
+
+type EmailConfirmationToken struct {
+	Id        pgtype.UUID        `db:"Id" json:"Id"`
+	Email     string             `db:"Email" json:"Email"`
+	TokenHash string             `db:"TokenHash" json:"TokenHash"`
+	ExpiresAt pgtype.Timestamptz `db:"ExpiresAt" json:"ExpiresAt"`
+	Used      bool               `db:"Used" json:"Used"`
+	CreatedAt pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
 }
 
 type GeneratedCv struct {
@@ -130,16 +152,18 @@ type PasswordResetToken struct {
 }
 
 type Plan struct {
-	Id              pgtype.UUID      `db:"Id" json:"Id"`
-	Name            string           `db:"Name" json:"Name"`
-	StripePriceID   pgtype.Text      `db:"StripePrice_id" json:"StripePrice_id"`
-	StripeProductID string           `db:"StripeProduct_id" json:"StripeProduct_id"`
-	Description     pgtype.Text      `db:"Description" json:"Description"`
-	Price           int32            `db:"Price" json:"Price"`
-	RoleId          pgtype.UUID      `db:"RoleId" json:"RoleId"`
-	Active          bool             `db:"Active" json:"Active"`
-	CreatedAt       pgtype.Timestamp `db:"CreatedAt" json:"CreatedAt"`
-	UpdatedAt       pgtype.Timestamp `db:"UpdatedAt" json:"UpdatedAt"`
+	Id                    pgtype.UUID      `db:"Id" json:"Id"`
+	Name                  string           `db:"Name" json:"Name"`
+	StripePriceID         pgtype.Text      `db:"StripePrice_id" json:"StripePrice_id"`
+	StripeProductID       string           `db:"StripeProduct_id" json:"StripeProduct_id"`
+	Description           pgtype.Text      `db:"Description" json:"Description"`
+	Price                 int32            `db:"Price" json:"Price"`
+	RoleId                pgtype.UUID      `db:"RoleId" json:"RoleId"`
+	Active                bool             `db:"Active" json:"Active"`
+	DailyCvLimit          pgtype.Int4      `db:"DailyCvLimit" json:"DailyCvLimit"`
+	DailyApplicationLimit pgtype.Int4      `db:"DailyApplicationLimit" json:"DailyApplicationLimit"`
+	CreatedAt             pgtype.Timestamp `db:"CreatedAt" json:"CreatedAt"`
+	UpdatedAt             pgtype.Timestamp `db:"UpdatedAt" json:"UpdatedAt"`
 }
 
 type Preference struct {
@@ -206,6 +230,31 @@ type SearchQuery struct {
 	SearchQueryEmbedding interface{}        `db:"SearchQueryEmbedding" json:"SearchQueryEmbedding"`
 }
 
+type StripeCustomer struct {
+	UserId           pgtype.UUID        `db:"UserId" json:"UserId"`
+	StripeCustomerId string             `db:"StripeCustomerId" json:"StripeCustomerId"`
+	CreatedAt        pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+	UpdatedAt        pgtype.Timestamptz `db:"UpdatedAt" json:"UpdatedAt"`
+}
+
+type StripeInvoice struct {
+	StripeInvoiceId      string             `db:"StripeInvoiceId" json:"StripeInvoiceId"`
+	StripeSubscriptionId pgtype.Text        `db:"StripeSubscriptionId" json:"StripeSubscriptionId"`
+	StripeCustomerId     pgtype.Text        `db:"StripeCustomerId" json:"StripeCustomerId"`
+	AmountPaid           pgtype.Int8        `db:"AmountPaid" json:"AmountPaid"`
+	Currency             pgtype.Text        `db:"Currency" json:"Currency"`
+	Status               string             `db:"Status" json:"Status"`
+	PaidAt               pgtype.Timestamptz `db:"PaidAt" json:"PaidAt"`
+	CreatedAt            pgtype.Timestamptz `db:"CreatedAt" json:"CreatedAt"`
+	UpdatedAt            pgtype.Timestamptz `db:"UpdatedAt" json:"UpdatedAt"`
+}
+
+type StripeWebhookEvent struct {
+	Id          string             `db:"Id" json:"Id"`
+	Type        string             `db:"Type" json:"Type"`
+	ProcessedAt pgtype.Timestamptz `db:"ProcessedAt" json:"ProcessedAt"`
+}
+
 type Subscription struct {
 	Id                      pgtype.UUID      `db:"Id" json:"Id"`
 	UserId                  pgtype.UUID      `db:"UserId" json:"UserId"`
@@ -213,7 +262,7 @@ type Subscription struct {
 	StripeCustomerID        string           `db:"StripeCustomer_id" json:"StripeCustomer_id"`
 	StripeSubscriptionID    string           `db:"StripeSubscription_id" json:"StripeSubscription_id"`
 	StripeCheckoutSessionID pgtype.Text      `db:"StripeCheckoutSession_id" json:"StripeCheckoutSession_id"`
-	StripePriceID           string           `db:"StripePrice_id" json:"StripePrice_id"`
+	StripePriceID           pgtype.Text      `db:"StripePrice_id" json:"StripePrice_id"`
 	Status                  string           `db:"Status" json:"Status"`
 	CurrentPeriodStart      pgtype.Timestamp `db:"CurrentPeriodStart" json:"CurrentPeriodStart"`
 	CurrentPeriodEnd        pgtype.Timestamp `db:"CurrentPeriodEnd" json:"CurrentPeriodEnd"`

@@ -97,6 +97,24 @@ func GetJobs(c *echo.Context, db *database.Database) error {
 		params.Platform = pgtype.Text{String: platform, Valid: true}
 	}
 
+	// Filtros de texto enviados pela UI. `stack` casa com o TÍTULO da vaga
+	// (rótulo da UI: "Cargo ou Stack") e `company` com a empresa — ambos
+	// case-insensitive (ILIKE) e aplicados na MESMA CTE do `platform`,
+	// portanto ANTES da comparação do cursor (paginação por cursor intacta).
+	//
+	// OBS: `location` NÃO é suportado — a tabela "Jobs" não possui coluna de
+	// localização, então o filtro seria ignorado (silenciosamente) e mentiria
+	// para o usuário. A UI deve omitir esse parâmetro.
+	stack := c.QueryParam("stack")
+	if stack != "" {
+		params.Stack = pgtype.Text{String: stack, Valid: true}
+	}
+
+	company := c.QueryParam("company")
+	if company != "" {
+		params.Company = pgtype.Text{String: company, Valid: true}
+	}
+
 	var simularityPercent pgtype.Float8
 	preferences, err := db.Query.GetUserPreferences(c.Request().Context(), userID)
 	if err != nil {

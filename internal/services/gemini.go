@@ -64,11 +64,10 @@ func ParseGeminiResponse(rawResponse string) (GeminiResponseWrapper, error) {
 }
 
 var models = []string{
-    "gemma-4-31b-it",
-    "gemini-3.5-flash",
-    "gemini-3.1-flash-lite",
-    "gemini-3-flash-preview",
-    "gemini-2.5-flash",
+	"gemini-3.5-flash",
+	"gemini-3.1-flash-lite",
+	"gemini-3-flash-preview",
+	"gemini-2.5-flash",
 }
 
 func callModel(ctx context.Context, model, prompt string) (string, error) {
@@ -94,11 +93,16 @@ func callModel(ctx context.Context, model, prompt string) (string, error) {
         return "", fmt.Errorf("no candidates")
     }
 
-    if len(response.Candidates[0].Content.Parts) == 0 {
+    if response.Candidates[0].Content == nil {
+        return "", fmt.Errorf("empty content")
+    }
+
+    parts := response.Candidates[0].Content.Parts
+    if len(parts) == 0 {
         return "", fmt.Errorf("empty response")
     }
 
-    text := response.Candidates[0].Content.Parts[len(response.Candidates)].Text
+    text := parts[len(parts)-1].Text
     fmt.Printf("[DEBUG] model=%s response_text=%s\n", model, text)
     return text, nil
 }
@@ -114,11 +118,11 @@ func GenerateResponse(prompt string) (any, error) {
 
 	var errs []error
 
-    const maxRetries = 3
+	const maxRounds = 3
 
-	for _, model := range models {
+	for round := 1; round <= maxRounds; round++ {
 
-		for retry := 1; retry <= maxRetries; retry++ {
+		for _, model := range models {
 
 			response, err := callModel(ctx, model, prompt)
 
@@ -126,19 +130,24 @@ func GenerateResponse(prompt string) (any, error) {
 				return response, nil
 			}
 
+			errs = append(errs, fmt.Errorf("%s: %w", model, err))
+
 			log.Printf(
-				"model=%s retry=%d error=%v",
+				"model=%s round=%d error=%v",
 				model,
-				retry,
+				round,
 				err,
 			)
 
-			errs = append(errs, fmt.Errorf("%s: %w", model, err))
-
-			time.Sleep(time.Duration(retry) * time.Second)
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(3 * time.Second):
+			}
 		}
 	}
-    return nil, errors.Join(errs...)
+
+	return nil, fmt.Errorf("all models failed after %d rounds: %w", maxRounds, errors.Join(errs...))
 }
 
 func debugPrint[T any](r *T) {
